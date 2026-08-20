@@ -1,0 +1,76 @@
+# Inbox XcodeGen spec.
+#
+# This file is the only authoritative Xcode project description.
+# Inbox.xcodeproj is generated (`xcodegen generate`) and checked in so a
+# clone can be opened in Xcode without running XcodeGen first. After
+# changing this file, regenerate and commit both.
+name: Inbox
+options:
+  minimumXcodeGenVersion: "2.46"
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  defaultConfig: Debug
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Ad-hoc signing: local Debug/Release builds work without a paid
+    # Apple Developer team. CloudKit entitlements land in S6.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  Inbox:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Inbox
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
+        PRODUCT_NAME: Inbox
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: 1
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+    dependencies:
+      - sdk: libsqlite3.tbd
+    scheme:
+      testTargets:
+        - InboxTests
+  InboxTests:
+    type: bundle.unit-test
+    platform: macOS
+    # Logic tests compile store/model sources directly so `xcodebuild test`
+    # does not need a TEST_HOST and does not load the AppKit UI. SPM keeps
+    # `@testable import Inbox` via SWIFT_PACKAGE.
+    sources:
+      - path: Tests/InboxTests
+      - path: Sources/Inbox
+        includes:
+          - LaunchConfiguration.swift
+          - Preferences.swift
+          - Record.swift
+          - RecordStore.swift
+          - SQLiteDatabase.swift
+          - Project.swift
+          - ProjectStore.swift
+          - Scope.swift
+          - RecordSort.swift
+          - ListRow.swift
+          - RowFocus.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.InboxTests
+        PRODUCT_NAME: InboxTests
+        LD_RUNPATH_SEARCH_PATHS: "@loader_path/../Frameworks"
+        GENERATE_INFOPLIST_FILE: YES
+        # Empty host: these are logic tests, not app-hosted.
+        BUNDLE_LOADER: ""
+        TEST_HOST: ""
+    dependencies:
+      - sdk: libsqlite3.tbd

@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Inbox.xcodeproj is tracked so a clone opens in Xcode. project.yml is the
+# source of truth (`xcodegen generate`). Ignore user state only; shared
+# schemes under xcshareddata stay versioned.
+xcuserdata/
