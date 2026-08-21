@@ -2,7 +2,7 @@
 
 > **Inbox 是一个刻意保持小而专注的个人开发 Record 工具：通用启动器负责把用户带进来，进入之后它以 Input 为第一入口，用一套极短、稳定、可形成肌肉记忆的交互，让用户完成记录、查找、整理和解决，然后离开。**（[PRD §25](Inbox_macOS_MVP_PRD_v0.1.md)）
 
-`v0.1.0` · macOS 14+ · MVP 本地功能已完成（S1–S5） · CloudKit 同步（S6）待接入
+`v0.2.0` · macOS 14+ · MVP 本地功能完成（S1–S5） · CloudKit 记录级同步已接入（S6，CKSyncEngine）
 
 Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation、Idea 等一切「想到就要记下来」的内容，不要求创建前判断类型。详见 [`Inbox_macOS_MVP_PRD_v0.1.md`](Inbox_macOS_MVP_PRD_v0.1.md)（产品定义）与 [`SPEC.md`](SPEC.md)（工程约定）。
 
@@ -87,7 +87,7 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 对照 [PRD §20](Inbox_macOS_MVP_PRD_v0.1.md)：
 
 - **Phase 0（技术验证）/ Phase 1（macOS MVP 本地闭环）**：已完成。Universal Input、Scope Bar、Record List 键盘模型、排序、Show Resolved、Trash/Undo、菜单栏驻留、Launch at Login、UI 冒烟均已合并 main（S1–S5）。
-- **CloudKit 同步（下一步，对应 S6）**：需要付费 Apple Developer 账号与 CloudKit entitlements，届时与用户确认后接入。数据层已为此预留：Record/Project 使用稳定 UUID 作为 `id`；时间戳统一为 Unix 毫秒；当前没有独立 tombstone 表，但 Trashed 状态（`status = 2` + `deleted_at`）已经是同步意义上的软删除标记，可直接作为未来 CKSyncEngine 变更追踪的基础。
+- **CloudKit 同步（S6）**：已完成。CKSyncEngine + 私有库自定义 zone `InboxZone`，容器 `iCloud.com.xiaolin.Inbox`（当前 Development 环境）。schema v3 引入 `ck_system_fields`（system fields + 共同祖先字段快照）、`pending_change`、`tombstone`，冲突按无损原则做字段级三方合并（详见 [`docs/SCHEMA.md`](docs/SCHEMA.md)）。双库端到端验证：`--sync-probe create/expect` 配合 `--db-path` 可在单机模拟双设备。上架/分发前需将容器环境切至 Production 并部署 schema。
 - **之后**：Phase 2 打磨与开放能力（导出、诊断、Accessibility）、Phase 3 Attachment、Phase 4+ iOS。
 
 ## 工程协作说明

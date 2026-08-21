@@ -18,6 +18,44 @@ final class LaunchConfigurationTests: XCTestCase {
         let path = try XCTUnwrap(config.databasePath)
         XCTAssertTrue(path.contains("inbox-smoke-4242.sqlite"))
         XCTAssertTrue(path.contains("inbox-smoke-"))
+        XCTAssertNil(config.syncProbe)
+    }
+
+    func testGenericPathFlagsOverrideSmokeDefaults() {
+        let config = LaunchConfiguration.parse([
+            "Inbox", "--ui-smoke", "--db-path", "/tmp/custom.sqlite", "--defaults-suite", "com.example.suite"
+        ])
+        XCTAssertTrue(config.isUISmoke)
+        XCTAssertEqual(config.databasePath, "/tmp/custom.sqlite")
+        XCTAssertEqual(config.defaultsSuiteName, "com.example.suite")
+    }
+
+    func testSyncProbeCreateParsesContentAndDbPath() {
+        let config = LaunchConfiguration.parse([
+            "Inbox",
+            "--sync-probe", "create",
+            "--content", "hello probe",
+            "--db-path", "/tmp/inbox-a.sqlite"
+        ])
+        XCTAssertFalse(config.isUISmoke)
+        XCTAssertEqual(config.syncProbe, .create)
+        XCTAssertEqual(config.probeContent, "hello probe")
+        XCTAssertEqual(config.databasePath, "/tmp/inbox-a.sqlite")
+        XCTAssertEqual(config.probeTimeout, 60)
+    }
+
+    func testSyncProbeExpectParsesTimeout() {
+        let config = LaunchConfiguration.parse([
+            "Inbox",
+            "--sync-probe", "expect",
+            "--content", "hello probe",
+            "--timeout", "15",
+            "--db-path", "/tmp/inbox-b.sqlite",
+            "--defaults-suite", "com.xiaolin.Inbox.probe"
+        ])
+        XCTAssertEqual(config.syncProbe, .expect)
+        XCTAssertEqual(config.probeTimeout, 15)
+        XCTAssertEqual(config.defaultsSuiteName, "com.xiaolin.Inbox.probe")
     }
 }
 

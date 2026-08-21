@@ -8,14 +8,15 @@
 ~/Library/Application Support/Inbox/inbox.sqlite
 ```
 
-`--ui-smoke` 启动参数会改用系统临时目录下的一次性文件，不影响这个位置（见根目录 [`README.md`](../README.md)）。
+`--ui-smoke` 启动参数会改用系统临时目录下的一次性文件（可用 `--db-path` 覆盖），不影响这个位置（见根目录 [`README.md`](../README.md)）。CKSyncEngine 的状态序列化默认在同一目录的 `ck-sync-state.json`；若指定了 `--db-path`，则写在该路径旁的 `<db-path>.ck-sync-state`。
 
 ## 版本管理
 
-Schema 版本通过 SQLite 内置的 `PRAGMA user_version` 记录，当前为 **2**。应用启动时（`RecordStore.init`）依次检查并按序执行每一个尚未应用的版本升级，每一步都在自己的事务（`BEGIN IMMEDIATE` / `COMMIT`，失败则 `ROLLBACK`）中完成，因此：
+Schema 版本通过 SQLite 内置的 `PRAGMA user_version` 记录，当前为 **3**。应用启动时（`RecordStore.init`）依次检查并按序执行每一个尚未应用的版本升级，每一步都在自己的事务（`BEGIN IMMEDIATE` / `COMMIT`，失败则 `ROLLBACK`）中完成，因此：
 
 - 全新数据库会从 0 依次执行到最新版本；
-- 已存在的 v1 数据库只会执行 v1 → v2 这一步，已有 Record 不受影响；
+- 已存在的 v1 数据库会走 v1 → v2 → v3，已有 Record 不受影响；
+- 已存在的 v2 数据库只会执行 v2 → v3；
 - 任意一步失败都不会留下半程状态。
 
 ## `record` 表
@@ -33,6 +34,7 @@ Record 是产品的最小工作单元（PRD §3.2）。
 | `updated_at` | `INTEGER NOT NULL` | 最近一次写操作时间，Unix 毫秒。Content、Priority、Status、Project、软删除/恢复的每次写入都会刷新它。 |
 | `resolved_at` | `INTEGER` | Resolve 时写入当前时间（毫秒），Reopen 时清回 `NULL`。移入 Trash 或从 Trash 恢复都不会改变这一列——Resolved 状态的 Record 被删除再恢复后仍然是 Resolved（无损恢复）。 |
 | `deleted_at` | `INTEGER` | 移入 Trash 时写入当前时间（毫秒），恢复时清回 `NULL`。是软删除的标记字段，也是 Trash 列表按“最近删除优先”排序的依据。 |
+| `ck_system_fields` | `BLOB` | v3 新增。CloudKit 同步信封：`NSKeyedArchiver` 编码，内含 `sys`（`CKRecord.encodeSystemFields` 的原始字节）和 `anc`（上次成功上传/下载的字段 JSON，作为三方合并的共同祖先）。`NULL` 表示这条 Record 尚未上传过。应用层通过 `CKLocalMetadata` 编解码；不要当普通 JSON/文本读。 |
 
 索引：`idx_record_status_created` on `(status, created_at DESC)`，服务于最常见的“当前状态 + 时间排序”查询路径。
 
@@ -49,8 +51,33 @@ Project 是 Record 的轻量分组和 Scope（PRD §3.3），不是页面、Work
 | `manual_order` | `INTEGER NOT NULL` | **唯一**的手动顺序来源。创建时取当前 `MAX(manual_order) + 1`（在事务内计算并写入，避免并发创建撞到同一个值）；此后只能通过拖拽整体重排（`reorderProjects`，把所有 Project 的 `manual_order` 一次性重写为 `0..<n` 的一个排列）。这一列同时决定三处 UI：Scope Bar 从左到右的顺序、All View 中 Project Group 从上到下的顺序、`⌘2…⌘0` 的按键映射（PRD §7.4）。不存在按名称、创建时间或活跃度的自动排序。 |
 | `created_at` | `INTEGER NOT NULL` | 创建时间，Unix 毫秒。 |
 | `updated_at` | `INTEGER NOT NULL` | 最近一次重命名或重排时间，Unix 毫秒。 |
+| `ck_system_fields` | `BLOB` | v3 新增。与 `record.ck_system_fields` 相同的 CloudKit 信封（`sys` + `anc`），`anc` 存 Project 的 name / manual_order / 时间戳 JSON。`NULL` 表示尚未上传。 |
 
-删除 Project（`ProjectStore.deleteProject`）不会删除 Record：同一事务内先把所有 `project_id = 该 Project` 的 Record（含 `status = trashed` 的）批量置 `project_id = NULL`，再删除 Project 行本身，使这些 Record 回到 Inbox 分组。
+删除 Project（`ProjectStore.deleteProject`）不会删除 Record：同一事务内先把所有 `project_id = 该 Project` 的 Record（含 `status = trashed` 的）批量置 `project_id = NULL`，再删除 Project 行本身，使这些 Record 回到 Inbox 分组。物理删除 Project 会写入 `tombstone` 并登记 `pending_change`（`change_type = delete`）；Trash 中的 Record 只是 `status` 字段变更，走普通 upsert。
+
+## `pending_change` 表
+
+v3 新增。本地尚未确认到达 CloudKit 的变更。主键 `(entity, id)`，同一对象只保留最新一条意图（后写覆盖）。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `entity` | `TEXT NOT NULL` | `record` 或 `project`。 |
+| `id` | `TEXT NOT NULL` | 对应 `record.id` / `project.id`。 |
+| `change_type` | `TEXT NOT NULL` | `upsert`（创建或字段更新，含移入/移出 Trash）或 `delete`（Permanent Delete）。 |
+
+v2 → v3 升级时，已有的每一行 Record / Project 都会插入一条 `upsert`，以便首次同步把本地库上传上去。CloudKit 确认保存或删除后，对应行被删除。
+
+## `tombstone` 表
+
+v3 新增。只记录 **Permanent Delete**（物理删除）。Trash 是 `record.status` / `deleted_at` 的字段变更，不进这张表。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `entity` | `TEXT NOT NULL` | `record` 或 `project`。 |
+| `id` | `TEXT NOT NULL` | 被物理删除的对象 id。 |
+| `deleted_at` | `INTEGER NOT NULL` | 本地删除时间，Unix 毫秒。 |
+
+CloudKit 确认删除后清理对应行。若远端又送来一条 `updated_at` 更新的修改，tombstone 让位、本地恢复该行（无损原则）。
 
 ## `record_fts`（FTS5 镜像表）
 
@@ -98,3 +125,4 @@ content LIKE '%term%' ESCAPE '\'
 |---|---|---|
 | v1 | 创建 `record` 表、`idx_record_status_created` 索引、`record_fts`（FTS5 trigram）虚拟表 | S1：`90fe008` add sqlite wrapper and record store with fts5 schema |
 | v2 | 新增 `project` 表；`record.project_id` 沿用 v1 已有的松散 `TEXT` 列，无需改动 `record` | S3a：`44421e0` add schema v2 migration and ProjectStore |
+| v3 | `record` / `project` 增加 `ck_system_fields BLOB`；新增 `pending_change`、`tombstone`；升级时为已有行登记 pending upsert | S6：CloudKit 记录级同步 |

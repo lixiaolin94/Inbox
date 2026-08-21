@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var mainViewController: MainViewController!
     private var recordStore: RecordStore!
+    private var syncEngine: InboxSyncEngine?
     private var statusItem: NSStatusItem?
     private var launch = LaunchConfiguration.parse([])
 
@@ -34,6 +35,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Local storage is required for the app to function at all —
             // this is not a recoverable error.
             fatalError("Failed to open local database: \(error)")
+        }
+
+        syncEngine = InboxSyncEngine.makeIfEnabled(
+            store: recordStore,
+            stateURL: InboxSyncEngine.stateURL(databasePath: launch.databasePath),
+            launch: launch
+        )
+
+        if launch.syncProbe != nil {
+            NSApp.setActivationPolicy(.accessory)
+            SyncProbeRunner.start(store: recordStore, engine: syncEngine, configuration: launch)
+            return
         }
 
         mainViewController = MainViewController(store: recordStore)

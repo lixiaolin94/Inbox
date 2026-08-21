@@ -30,11 +30,17 @@ enum RecordStoreError: Error, Equatable, CustomStringConvertible {
 /// budget in PRD §17.3), so correctness wins over MATCH-based ranking for
 /// this Slice.
 final class RecordStore {
-    private let queue = DispatchQueue(label: "com.inbox.recordstore")
-    private let db: SQLiteDatabase
+    let queue = DispatchQueue(label: "com.inbox.recordstore")
+    let db: SQLiteDatabase
 
     /// Project CRUD, sharing this store's queue and connection (PRD §3.3).
     let projects: ProjectStore
+
+    /// Fired on the DB serial queue after a local write commits. The sync
+    /// layer subscribes; CloudKit types must not appear here.
+    var onDidCommitChange: (([PendingChange]) -> Void)? {
+        didSet { projects.onDidCommitChange = onDidCommitChange }
+    }
 
     init(databasePath: String) throws {
         let directory = (databasePath as NSString).deletingLastPathComponent
@@ -62,8 +68,12 @@ final class RecordStore {
         projectID: String? = nil,
         completion: @escaping (Result<Record, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.insert(db: db, content: content, projectID: projectID) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.insert(db: self.db, content: content, projectID: projectID) }
+            if case .success(let record) = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: record.id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -73,8 +83,12 @@ final class RecordStore {
         content: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.update(db: db, id: id, content: content) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.update(db: self.db, id: id, content: content) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -88,8 +102,12 @@ final class RecordStore {
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         precondition(Priority(rawValue: priority) != nil, "priority out of range: \(priority)")
-        queue.async { [db] in
-            let result = Result { try Self.applyPriorityUpdate(db: db, id: id, priority: priority) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyPriorityUpdate(db: self.db, id: id, priority: priority) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -101,8 +119,12 @@ final class RecordStore {
         status: RecordStatus,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.updateStatus(db: db, id: id, status: status) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.updateStatus(db: self.db, id: id, status: status) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -115,8 +137,12 @@ final class RecordStore {
         projectID: String?,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.applyProjectUpdate(db: db, id: id, projectID: projectID) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyProjectUpdate(db: self.db, id: id, projectID: projectID) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -128,8 +154,12 @@ final class RecordStore {
         id: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.applyMoveToTrash(db: db, id: id) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyMoveToTrash(db: self.db, id: id) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -142,8 +172,12 @@ final class RecordStore {
         id: String,
         completion: @escaping (Result<Record, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.applyRestoreFromTrash(db: db, id: id) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyRestoreFromTrash(db: self.db, id: id) }
+            if case .success = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .upsert)])
+            }
             DispatchQueue.main.async { completion(result) }
         }
     }
@@ -155,9 +189,13 @@ final class RecordStore {
         id: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
-        queue.async { [db] in
-            let result = Result { try Self.applyPermanentDelete(db: db, id: id) }
-            DispatchQueue.main.async { completion(result) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyPermanentDelete(db: self.db, id: id) }
+            if case .success(true) = result {
+                self.onDidCommitChange?([PendingChange(entity: .record, id: id, changeType: .delete)])
+            }
+            DispatchQueue.main.async { completion(result.map { _ in () }) }
         }
     }
 
@@ -260,6 +298,31 @@ final class RecordStore {
     );
     """
 
+    /// CloudKit sync metadata (S6). `ck_system_fields` is an envelope of
+    /// encodeSystemFields + last-acked payload JSON (see CKLocalMetadata).
+    /// Existing rows get NULL (never uploaded) and a pending upsert so the
+    /// first sync uploads the local library.
+    private static let schemaV3SQL = """
+    ALTER TABLE record ADD COLUMN ck_system_fields BLOB;
+    ALTER TABLE project ADD COLUMN ck_system_fields BLOB;
+    CREATE TABLE pending_change (
+        entity TEXT NOT NULL,
+        id TEXT NOT NULL,
+        change_type TEXT NOT NULL,
+        PRIMARY KEY (entity, id)
+    );
+    CREATE TABLE tombstone (
+        entity TEXT NOT NULL,
+        id TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL,
+        PRIMARY KEY (entity, id)
+    );
+    INSERT INTO pending_change (entity, id, change_type)
+        SELECT 'record', id, 'upsert' FROM record;
+    INSERT INTO pending_change (entity, id, change_type)
+        SELECT 'project', id, 'upsert' FROM project;
+    """
+
     /// Runs each pending version step in order inside its own transaction, so
     /// a v1 database upgrades in place and a brand-new database walks the
     /// same path from 0. Each step is independently rollback-safe.
@@ -280,6 +343,17 @@ final class RecordStore {
             do {
                 try db.exec(schemaV2SQL)
                 try db.setUserVersion(2)
+                try db.exec("COMMIT;")
+            } catch {
+                try? db.exec("ROLLBACK;")
+                throw error
+            }
+        }
+        if try db.userVersion() < 3 {
+            try db.exec("BEGIN IMMEDIATE;")
+            do {
+                try db.exec(schemaV3SQL)
+                try db.setUserVersion(3)
                 try db.exec("COMMIT;")
             } catch {
                 try? db.exec("ROLLBACK;")
@@ -309,6 +383,7 @@ final class RecordStore {
                 "INSERT INTO record_fts (record_id, content) VALUES (?, ?)",
                 bindings: [.text(id), .text(content)]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -332,6 +407,7 @@ final class RecordStore {
                 "UPDATE record_fts SET content = ? WHERE record_id = ?",
                 bindings: [.text(content), .text(id)]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -347,6 +423,7 @@ final class RecordStore {
                 "UPDATE record SET priority = ?, updated_at = ? WHERE id = ?",
                 bindings: [.int64(Int64(priority)), .int64(now), .text(id)]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -363,6 +440,7 @@ final class RecordStore {
                 "UPDATE record SET status = ?, resolved_at = ?, updated_at = ? WHERE id = ?",
                 bindings: [.int64(Int64(status.rawValue)), resolvedAt, .int64(now), .text(id)]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -378,6 +456,7 @@ final class RecordStore {
                 "UPDATE record SET project_id = ?, updated_at = ? WHERE id = ?",
                 bindings: [projectID.map(SQLiteValue.text) ?? .null, .int64(now), .text(id)]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -401,6 +480,7 @@ final class RecordStore {
                     .text(id)
                 ]
             )
+            try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
@@ -426,6 +506,7 @@ final class RecordStore {
                 record.status = restoredStatus
                 record.deletedAt = nil
                 record.updatedAt = now
+                try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             }
             try db.exec("COMMIT;")
             return record
@@ -435,15 +516,27 @@ final class RecordStore {
         }
     }
 
-    private static func applyPermanentDelete(db: SQLiteDatabase, id: String) throws {
+    /// Returns true when a trashed row was physically removed (and a
+    /// tombstone + pending delete recorded). False is a no-op.
+    private static func applyPermanentDelete(db: SQLiteDatabase, id: String) throws -> Bool {
         try db.exec("BEGIN IMMEDIATE;")
         do {
             let record = try fetchByID(db: db, id: id)
+            var didDelete = false
             if record?.status == RecordStatus.trashed.rawValue {
                 try db.run("DELETE FROM record WHERE id = ?", bindings: [.text(id)])
                 try db.run("DELETE FROM record_fts WHERE record_id = ?", bindings: [.text(id)])
+                try SyncTracking.insertTombstone(
+                    db: db,
+                    entity: .record,
+                    id: id,
+                    deletedAt: currentTimeMillis()
+                )
+                try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .delete)
+                didDelete = true
             }
             try db.exec("COMMIT;")
+            return didDelete
         } catch {
             try? db.exec("ROLLBACK;")
             throw error
@@ -465,10 +558,10 @@ final class RecordStore {
         return records
     }
 
-    private static let recordColumns =
+    static let recordColumns =
         "id, content, priority, status, project_id, created_at, updated_at, resolved_at, deleted_at"
 
-    private static func fetchByID(db: SQLiteDatabase, id: String) throws -> Record? {
+    static func fetchByID(db: SQLiteDatabase, id: String) throws -> Record? {
         var result: Record?
         try db.query(
             "SELECT \(recordColumns) FROM record WHERE id = ?",
@@ -516,7 +609,7 @@ final class RecordStore {
         return records
     }
 
-    private static func recordFromRow(_ stmt: OpaquePointer) -> Record {
+    static func recordFromRow(_ stmt: OpaquePointer) -> Record {
         Record(
             id: columnText(stmt, 0) ?? "",
             content: columnText(stmt, 1) ?? "",
@@ -544,7 +637,7 @@ final class RecordStore {
         return result
     }
 
-    private static func currentTimeMillis() -> Int64 {
+    static func currentTimeMillis() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
     }
 }

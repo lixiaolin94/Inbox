@@ -15,11 +15,12 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    # Ad-hoc signing: local Debug/Release builds work without a paid
-    # Apple Developer team. CloudKit entitlements land in S6.
-    CODE_SIGN_IDENTITY: "-"
-    CODE_SIGN_STYLE: Manual
-    DEVELOPMENT_TEAM: ""
+    # Automatic signing with the user's team (configured 2026-08-21 in
+    # Xcode, mirrored here so `xcodegen generate` preserves it). Needed for
+    # the S6 CloudKit entitlements.
+    CODE_SIGN_IDENTITY: "Apple Development"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: YWQ4TY4VR5
     ENABLE_HARDENED_RUNTIME: NO
     GENERATE_INFOPLIST_FILE: YES
 targets:
@@ -32,13 +33,23 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
         PRODUCT_NAME: Inbox
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+    # S6: CloudKit record-level sync (CKSyncEngine). aps-environment enables
+    # the push notifications CKSyncEngine uses for remote change hints.
+    entitlements:
+      path: Inbox.entitlements
+      properties:
+        com.apple.developer.icloud-services: [CloudKit]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.xiaolin.Inbox]
+        com.apple.developer.icloud-container-environment: Development
+        com.apple.developer.aps-environment: development
     dependencies:
       - sdk: libsqlite3.tbd
+      - sdk: CloudKit.framework
     scheme:
       testTargets:
         - InboxTests
@@ -56,6 +67,7 @@ targets:
           - Preferences.swift
           - Record.swift
           - RecordStore.swift
+          - RecordStore+Sync.swift
           - SQLiteDatabase.swift
           - Project.swift
           - ProjectStore.swift
@@ -63,6 +75,8 @@ targets:
           - RecordSort.swift
           - ListRow.swift
           - RowFocus.swift
+          - SyncTypes.swift
+          - ConflictMerger.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.InboxTests

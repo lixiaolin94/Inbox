@@ -2,30 +2,84 @@ import Foundation
 
 /// Startup switches parsed from `CommandLine.arguments`.
 ///
-/// `--ui-smoke` redirects the database and preferences to throwaway
-/// locations so the in-process UI smoke run never touches the user's
-/// real Inbox files. Normal launches leave both fields nil.
+/// `--db-path` and `--defaults-suite` are the generic overrides.
+/// `--ui-smoke` reuses them (filling in a temp database and the smoke suite
+/// when they are omitted) so its isolation semantics stay unchanged.
 struct LaunchConfiguration: Equatable {
     static let uiSmokeArgument = "--ui-smoke"
     static let smokeDefaultsSuite = "com.xiaolin.Inbox.smoke"
 
+    enum SyncProbeVerb: String, Equatable {
+        case create
+        case expect
+    }
+
     var isUISmoke: Bool
     var databasePath: String?
     var defaultsSuiteName: String?
+    var syncProbe: SyncProbeVerb?
+    var probeContent: String?
+    var probeTimeout: TimeInterval
 
     static func parse(
         _ arguments: [String],
         pid: Int32 = ProcessInfo.processInfo.processIdentifier
     ) -> LaunchConfiguration {
-        guard arguments.contains(uiSmokeArgument) else {
-            return LaunchConfiguration(isUISmoke: false, databasePath: nil, defaultsSuiteName: nil)
+        var isUISmoke = false
+        var databasePath: String?
+        var defaultsSuiteName: String?
+        var syncProbe: SyncProbeVerb?
+        var probeContent: String?
+        var probeTimeout: TimeInterval = 60
+
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case uiSmokeArgument:
+                isUISmoke = true
+            case "--db-path":
+                index += 1
+                if index < arguments.count { databasePath = arguments[index] }
+            case "--defaults-suite":
+                index += 1
+                if index < arguments.count { defaultsSuiteName = arguments[index] }
+            case "--sync-probe":
+                index += 1
+                if index < arguments.count {
+                    syncProbe = SyncProbeVerb(rawValue: arguments[index])
+                }
+            case "--content":
+                index += 1
+                if index < arguments.count { probeContent = arguments[index] }
+            case "--timeout":
+                index += 1
+                if index < arguments.count, let value = TimeInterval(arguments[index]) {
+                    probeTimeout = value
+                }
+            default:
+                break
+            }
+            index += 1
         }
-        let filename = "inbox-smoke-\(pid).sqlite"
-        let databasePath = (NSTemporaryDirectory() as NSString).appendingPathComponent(filename)
+
+        if isUISmoke {
+            if databasePath == nil {
+                let filename = "inbox-smoke-\(pid).sqlite"
+                databasePath = (NSTemporaryDirectory() as NSString).appendingPathComponent(filename)
+            }
+            if defaultsSuiteName == nil {
+                defaultsSuiteName = smokeDefaultsSuite
+            }
+        }
+
         return LaunchConfiguration(
-            isUISmoke: true,
+            isUISmoke: isUISmoke,
             databasePath: databasePath,
-            defaultsSuiteName: smokeDefaultsSuite
+            defaultsSuiteName: defaultsSuiteName,
+            syncProbe: syncProbe,
+            probeContent: probeContent,
+            probeTimeout: probeTimeout
         )
     }
 }

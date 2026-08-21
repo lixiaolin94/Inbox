@@ -85,6 +85,19 @@ final class MainViewController: NSViewController {
         setUpLayout()
         setUpTrashSurface()
         loadProjectsAndRestoreScope()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(remoteChangesApplied),
+            name: .inboxDidApplyRemoteChanges,
+            object: nil
+        )
+    }
+
+    @objc private func remoteChangesApplied() {
+        reloadProjectsThenSearch()
+        if isShowingTrash {
+            trashViewController.reload(projects: projects)
+        }
     }
 
     override func viewDidAppear() {

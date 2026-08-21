@@ -8,7 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		0889E0C8BAFDF68EF3C98C11 /* PriorityAndFocusLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */; };
+		0B3E57D04610A3CC95BFACC9 /* SyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F7F1C2486C386158DDC90D /* SyncTypes.swift */; };
 		0D4EF71715B1CE9D5BE95A04 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = D274E5E49E5D51C76B3003A1 /* Preferences.swift */; };
+		0E8DFFB814F67CDCFF9DC887 /* CKRecordMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA4709AC669DBB28F84F697 /* CKRecordMapping.swift */; };
 		125F79366D5E07AECD3BE116 /* TrashViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8867570B50BAC9DCFEC8E0D /* TrashViewController.swift */; };
 		143FAD2BD329479195B94FF5 /* RecordTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32B4B12239290BD7621F584B /* RecordTableView.swift */; };
 		14502D586601EDD2CBF27376 /* RecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5637C9B7BA9AFB8A512159 /* RecordStore.swift */; };
@@ -20,6 +22,7 @@
 		24200A53890EB4E1B74F5238 /* Record.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B5BB77FEE75998AAC06888 /* Record.swift */; };
 		2F7C4E3F7FD66C0763282C73 /* ListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DCE3ACD0D2D447D964CC34 /* ListRow.swift */; };
 		32C25503160FE47102711C7B /* RowFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE904DE86FC927D9EA48CFDA /* RowFocus.swift */; };
+		34F89241AC81DD091793A273 /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 041D1D8EF2FA14178C7B1021 /* CloudKit.framework */; };
 		3BDFF4D912712B2B9A137664 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E309569B184275B649A98C9E /* libsqlite3.tbd */; };
 		3C4447D4C1ED64B196EEA76B /* ScopeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1246B35A466A949699A84309 /* ScopeBarView.swift */; };
 		40DE095B42AF4E18EFC52926 /* LaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D3D71153FF63390A00D609 /* LaunchConfiguration.swift */; };
@@ -27,40 +30,54 @@
 		481844093D3798130660E636 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46D950A3F131C189B43C23A /* AppDelegate.swift */; };
 		50EF36DF778540C4BCC12D8A /* RowFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE904DE86FC927D9EA48CFDA /* RowFocus.swift */; };
 		573D565D252245D9A7455094 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896AC8834F72CDD1A45E803C /* main.swift */; };
+		58AA9801042A7B3A8588A66F /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C49BF22F1A6F3BAFAABA5FC /* RecordStore+Sync.swift */; };
+		5B4EC58A2479DC776D75FB74 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9855280A774D9A6DE9799BDA /* SyncEngine.swift */; };
 		66C09C336C5B3EDA5E8FE704 /* ListRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 597618AABCEE8C89CD4631F7 /* ListRowTests.swift */; };
 		6D6EE6EC8E2033E605E011BF /* LaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D3D71153FF63390A00D609 /* LaunchConfiguration.swift */; };
 		6E5C0C9F3105E6C94EF4C25B /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABB62B2397C5E7FAB046934 /* MainViewController.swift */; };
 		6ED2A9F6F2FBF323E683304F /* ResolvedSectionHeaderCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BA6734D63A6AA6C17787062 /* ResolvedSectionHeaderCellView.swift */; };
 		720EE32F03EC8E38AD6C02A1 /* Scope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A06694722F657DADEB86DED /* Scope.swift */; };
 		7B1C5FF0BDB24DD611E02355 /* Scope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A06694722F657DADEB86DED /* Scope.swift */; };
+		7DCD15523105D407BC90898C /* SyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F7F1C2486C386158DDC90D /* SyncTypes.swift */; };
+		843F3F3811C45D6866B6F737 /* ConflictMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA52F1CD7CA5E280047A347 /* ConflictMergerTests.swift */; };
 		87A3376D4DEFD6DCF03F4B99 /* RecordStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6563AB9338276A08F872B2DE /* RecordStoreTests.swift */; };
 		9B599606A418D6BD59F72CE3 /* RecordSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E17FE3A12A2FBC9BD7B9B1 /* RecordSort.swift */; };
+		9CE1545273CD02E289336613 /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A230CEA3FAAABD1144F0A3C /* ConflictMerger.swift */; };
 		9DD27CDB3A4B1E803B39FAF1 /* Record.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B5BB77FEE75998AAC06888 /* Record.swift */; };
 		A10D9BC668A277DE0A59F767 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF22B62A2B943332DFD2A29 /* ProjectStore.swift */; };
 		AC5A62D3B29A68AD4D7C2B00 /* LaunchConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C8ABEDDDB553F30C38FD2A /* LaunchConfigurationTests.swift */; };
 		AE4AB5952BE030C8FF1447DA /* ProjectStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E006D84F28D1E4C5AA9AE86 /* ProjectStoreTests.swift */; };
+		B1A2647E208B58FC159A6256 /* SyncTrackingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C94AC93638AC5DC76AFF9 /* SyncTrackingTests.swift */; };
+		B34706C0265040DA7BAE2868 /* SyncProbeRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFFD4C723B157BD018D9BD27 /* SyncProbeRunner.swift */; };
 		B51DFACAE032E650AFC0697F /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34219C559474578ECD316FA /* Project.swift */; };
 		C6B4DE10A6125CA7D9E537D7 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF22B62A2B943332DFD2A29 /* ProjectStore.swift */; };
 		D7FDDC7B50A0DD18EE8FBF6C /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34219C559474578ECD316FA /* Project.swift */; };
+		D9362521EC4D67B257F6CC9A /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A230CEA3FAAABD1144F0A3C /* ConflictMerger.swift */; };
 		DB3F06C958B9656B9017D437 /* RecordSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E17FE3A12A2FBC9BD7B9B1 /* RecordSort.swift */; };
 		E60BECF00448782438761790 /* ScopeChipButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8901A4BBCDEF111BB0BF1D9 /* ScopeChipButton.swift */; };
 		ECF84FF5F839FDBFBD3A2508 /* RecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5637C9B7BA9AFB8A512159 /* RecordStore.swift */; };
 		F19081A763A6676F74D44A03 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E309569B184275B649A98C9E /* libsqlite3.tbd */; };
+		F30BD3EC7AD78E7E387D452F /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C49BF22F1A6F3BAFAABA5FC /* RecordStore+Sync.swift */; };
 		F3AABD09ED8246030F4D912A /* ListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DCE3ACD0D2D447D964CC34 /* ListRow.swift */; };
 		FAF3361575C4CA92E57465CE /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60DB96E44DD0DC27EACF4D3D /* SQLiteDatabase.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		041D1D8EF2FA14178C7B1021 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		1246B35A466A949699A84309 /* ScopeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScopeBarView.swift; sourceTree = "<group>"; };
 		1B4561087522EDEA87D4A330 /* InboxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = InboxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1BA6734D63A6AA6C17787062 /* ResolvedSectionHeaderCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolvedSectionHeaderCellView.swift; sourceTree = "<group>"; };
+		250C94AC93638AC5DC76AFF9 /* SyncTrackingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTrackingTests.swift; sourceTree = "<group>"; };
 		28B5BB77FEE75998AAC06888 /* Record.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Record.swift; sourceTree = "<group>"; };
+		2BA52F1CD7CA5E280047A347 /* ConflictMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictMergerTests.swift; sourceTree = "<group>"; };
 		2D5637C9B7BA9AFB8A512159 /* RecordStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordStore.swift; sourceTree = "<group>"; };
 		32B4B12239290BD7621F584B /* RecordTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordTableView.swift; sourceTree = "<group>"; };
+		3BA4709AC669DBB28F84F697 /* CKRecordMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CKRecordMapping.swift; sourceTree = "<group>"; };
 		3E006D84F28D1E4C5AA9AE86 /* ProjectStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStoreTests.swift; sourceTree = "<group>"; };
 		4318381D0ADF0F794DF91D23 /* UISmokeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UISmokeRunner.swift; sourceTree = "<group>"; };
 		45DCE3ACD0D2D447D964CC34 /* ListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRow.swift; sourceTree = "<group>"; };
 		4A06694722F657DADEB86DED /* Scope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scope.swift; sourceTree = "<group>"; };
+		4A230CEA3FAAABD1144F0A3C /* ConflictMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictMerger.swift; sourceTree = "<group>"; };
 		4ABB62B2397C5E7FAB046934 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		597618AABCEE8C89CD4631F7 /* ListRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRowTests.swift; sourceTree = "<group>"; };
 		5EF22B62A2B943332DFD2A29 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
@@ -69,10 +86,14 @@
 		65E17FE3A12A2FBC9BD7B9B1 /* RecordSort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordSort.swift; sourceTree = "<group>"; };
 		6E1A0FF01C152F3C7C3B91A9 /* RecordCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordCellView.swift; sourceTree = "<group>"; };
 		7973723523BC248A64B049CF /* Inbox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Inbox.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C49BF22F1A6F3BAFAABA5FC /* RecordStore+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecordStore+Sync.swift"; sourceTree = "<group>"; };
 		896AC8834F72CDD1A45E803C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		96F7F1C2486C386158DDC90D /* SyncTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTypes.swift; sourceTree = "<group>"; };
+		9855280A774D9A6DE9799BDA /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		A6C8ABEDDDB553F30C38FD2A /* LaunchConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchConfigurationTests.swift; sourceTree = "<group>"; };
 		B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriorityAndFocusLogicTests.swift; sourceTree = "<group>"; };
 		B46D950A3F131C189B43C23A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		BFFD4C723B157BD018D9BD27 /* SyncProbeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProbeRunner.swift; sourceTree = "<group>"; };
 		CE904DE86FC927D9EA48CFDA /* RowFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowFocus.swift; sourceTree = "<group>"; };
 		D274E5E49E5D51C76B3003A1 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		D8D3D71153FF63390A00D609 /* LaunchConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchConfiguration.swift; sourceTree = "<group>"; };
@@ -90,6 +111,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3BDFF4D912712B2B9A137664 /* libsqlite3.tbd in Frameworks */,
+				34F89241AC81DD091793A273 /* CloudKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,12 +137,14 @@
 		8B1B65C29404B346BBCC3D84 /* InboxTests */ = {
 			isa = PBXGroup;
 			children = (
+				2BA52F1CD7CA5E280047A347 /* ConflictMergerTests.swift */,
 				A6C8ABEDDDB553F30C38FD2A /* LaunchConfigurationTests.swift */,
 				597618AABCEE8C89CD4631F7 /* ListRowTests.swift */,
 				B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */,
 				3E006D84F28D1E4C5AA9AE86 /* ProjectStoreTests.swift */,
 				EC7F047492510E3A2AE451EF /* RecordSortTests.swift */,
 				6563AB9338276A08F872B2DE /* RecordStoreTests.swift */,
+				250C94AC93638AC5DC76AFF9 /* SyncTrackingTests.swift */,
 			);
 			path = InboxTests;
 			sourceTree = "<group>";
@@ -139,6 +163,8 @@
 			isa = PBXGroup;
 			children = (
 				B46D950A3F131C189B43C23A /* AppDelegate.swift */,
+				3BA4709AC669DBB28F84F697 /* CKRecordMapping.swift */,
+				4A230CEA3FAAABD1144F0A3C /* ConflictMerger.swift */,
 				DB1394FA114AAB5A719E2F23 /* GroupHeaderCellView.swift */,
 				D8D3D71153FF63390A00D609 /* LaunchConfiguration.swift */,
 				45DCE3ACD0D2D447D964CC34 /* ListRow.swift */,
@@ -151,6 +177,7 @@
 				6E1A0FF01C152F3C7C3B91A9 /* RecordCellView.swift */,
 				65E17FE3A12A2FBC9BD7B9B1 /* RecordSort.swift */,
 				2D5637C9B7BA9AFB8A512159 /* RecordStore.swift */,
+				7C49BF22F1A6F3BAFAABA5FC /* RecordStore+Sync.swift */,
 				32B4B12239290BD7621F584B /* RecordTableView.swift */,
 				1BA6734D63A6AA6C17787062 /* ResolvedSectionHeaderCellView.swift */,
 				CE904DE86FC927D9EA48CFDA /* RowFocus.swift */,
@@ -158,6 +185,9 @@
 				1246B35A466A949699A84309 /* ScopeBarView.swift */,
 				E8901A4BBCDEF111BB0BF1D9 /* ScopeChipButton.swift */,
 				60DB96E44DD0DC27EACF4D3D /* SQLiteDatabase.swift */,
+				9855280A774D9A6DE9799BDA /* SyncEngine.swift */,
+				BFFD4C723B157BD018D9BD27 /* SyncProbeRunner.swift */,
+				96F7F1C2486C386158DDC90D /* SyncTypes.swift */,
 				E8867570B50BAC9DCFEC8E0D /* TrashViewController.swift */,
 				4318381D0ADF0F794DF91D23 /* UISmokeRunner.swift */,
 			);
@@ -184,6 +214,7 @@
 		F173EF4059B4537FA506FA17 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				041D1D8EF2FA14178C7B1021 /* CloudKit.framework */,
 				E309569B184275B649A98C9E /* libsqlite3.tbd */,
 			);
 			name = Frameworks;
@@ -238,12 +269,12 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					40AE179E8E5652549BBBCE1D = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Manual;
+						DevelopmentTeam = YWQ4TY4VR5;
+						ProvisioningStyle = Automatic;
 					};
 					87A2A179CEB237D7C21F7313 = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Manual;
+						DevelopmentTeam = YWQ4TY4VR5;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -273,6 +304,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				481844093D3798130660E636 /* AppDelegate.swift in Sources */,
+				0E8DFFB814F67CDCFF9DC887 /* CKRecordMapping.swift in Sources */,
+				9CE1545273CD02E289336613 /* ConflictMerger.swift in Sources */,
 				1FD5052782589158C4FB94D3 /* GroupHeaderCellView.swift in Sources */,
 				6D6EE6EC8E2033E605E011BF /* LaunchConfiguration.swift in Sources */,
 				F3AABD09ED8246030F4D912A /* ListRow.swift in Sources */,
@@ -283,6 +316,7 @@
 				24200A53890EB4E1B74F5238 /* Record.swift in Sources */,
 				14CE7C364FE4DE8D50AA1BFC /* RecordCellView.swift in Sources */,
 				DB3F06C958B9656B9017D437 /* RecordSort.swift in Sources */,
+				58AA9801042A7B3A8588A66F /* RecordStore+Sync.swift in Sources */,
 				14502D586601EDD2CBF27376 /* RecordStore.swift in Sources */,
 				143FAD2BD329479195B94FF5 /* RecordTableView.swift in Sources */,
 				6ED2A9F6F2FBF323E683304F /* ResolvedSectionHeaderCellView.swift in Sources */,
@@ -291,6 +325,9 @@
 				7B1C5FF0BDB24DD611E02355 /* Scope.swift in Sources */,
 				3C4447D4C1ED64B196EEA76B /* ScopeBarView.swift in Sources */,
 				E60BECF00448782438761790 /* ScopeChipButton.swift in Sources */,
+				5B4EC58A2479DC776D75FB74 /* SyncEngine.swift in Sources */,
+				B34706C0265040DA7BAE2868 /* SyncProbeRunner.swift in Sources */,
+				0B3E57D04610A3CC95BFACC9 /* SyncTypes.swift in Sources */,
 				125F79366D5E07AECD3BE116 /* TrashViewController.swift in Sources */,
 				429CD4987894DFF53A6A993F /* UISmokeRunner.swift in Sources */,
 				573D565D252245D9A7455094 /* main.swift in Sources */,
@@ -301,6 +338,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D9362521EC4D67B257F6CC9A /* ConflictMerger.swift in Sources */,
+				843F3F3811C45D6866B6F737 /* ConflictMergerTests.swift in Sources */,
 				40DE095B42AF4E18EFC52926 /* LaunchConfiguration.swift in Sources */,
 				AC5A62D3B29A68AD4D7C2B00 /* LaunchConfigurationTests.swift in Sources */,
 				2F7C4E3F7FD66C0763282C73 /* ListRow.swift in Sources */,
@@ -313,11 +352,14 @@
 				9DD27CDB3A4B1E803B39FAF1 /* Record.swift in Sources */,
 				9B599606A418D6BD59F72CE3 /* RecordSort.swift in Sources */,
 				16D3A52A8346F2EF2C16E4F4 /* RecordSortTests.swift in Sources */,
+				F30BD3EC7AD78E7E387D452F /* RecordStore+Sync.swift in Sources */,
 				ECF84FF5F839FDBFBD3A2508 /* RecordStore.swift in Sources */,
 				87A3376D4DEFD6DCF03F4B99 /* RecordStoreTests.swift in Sources */,
 				32C25503160FE47102711C7B /* RowFocus.swift in Sources */,
 				FAF3361575C4CA92E57465CE /* SQLiteDatabase.swift in Sources */,
 				720EE32F03EC8E38AD6C02A1 /* Scope.swift in Sources */,
+				B1A2647E208B58FC159A6256 /* SyncTrackingTests.swift in Sources */,
+				7DCD15523105D407BC90898C /* SyncTypes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -328,11 +370,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.Inbox;
 				PRODUCT_NAME = Inbox;
 				SDKROOT = macosx;
@@ -386,11 +429,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = YWQ4TY4VR5;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -432,11 +475,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.Inbox;
 				PRODUCT_NAME = Inbox;
 				SDKROOT = macosx;
@@ -476,11 +520,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = YWQ4TY4VR5;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

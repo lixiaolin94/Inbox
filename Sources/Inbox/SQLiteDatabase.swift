@@ -26,6 +26,7 @@ enum SQLiteError: Error, CustomStringConvertible {
 enum SQLiteValue {
     case text(String)
     case int64(Int64)
+    case blob(Data)
     case null
 }
 
@@ -110,6 +111,16 @@ final class SQLiteDatabase {
                 sqlite3_bind_text(stmt, index, string, -1, SQLiteTransient)
             case .int64(let number):
                 sqlite3_bind_int64(stmt, index, number)
+            case .blob(let data):
+                data.withUnsafeBytes { rawBuffer in
+                    _ = sqlite3_bind_blob(
+                        stmt,
+                        index,
+                        rawBuffer.baseAddress,
+                        Int32(data.count),
+                        SQLiteTransient
+                    )
+                }
             case .null:
                 sqlite3_bind_null(stmt, index)
             }
@@ -133,4 +144,13 @@ func columnInt64(_ stmt: OpaquePointer, _ index: Int32) -> Int64 {
 
 func columnInt64OrNil(_ stmt: OpaquePointer, _ index: Int32) -> Int64? {
     sqlite3_column_type(stmt, index) == SQLITE_NULL ? nil : sqlite3_column_int64(stmt, index)
+}
+
+func columnBlob(_ stmt: OpaquePointer, _ index: Int32) -> Data? {
+    guard sqlite3_column_type(stmt, index) != SQLITE_NULL else { return nil }
+    let length = Int(sqlite3_column_bytes(stmt, index))
+    guard length > 0, let bytes = sqlite3_column_blob(stmt, index) else {
+        return Data()
+    }
+    return Data(bytes: bytes, count: length)
 }
