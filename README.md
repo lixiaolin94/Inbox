@@ -52,15 +52,20 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | Universal Input | `Enter` | 创建当前输入内容为新 Record |
 | Universal Input | `↓` | 焦点移入 Record List 第一条可见结果 |
 | Record List（Row Focus） | `↑` / `↓` | 在可见 Record 间导航；第一条上按 `↑` 返回 Input |
-| Record List（Row Focus） | `←` | 提高 Priority（向 P0 方向前进一档，已在 P0 不循环） |
-| Record List（Row Focus） | `→` | 降低 Priority（向 P3 方向前进一档，已在 P3 不循环） |
-| Record List（Row Focus） | `Space` | Toggle Resolved / Reopen |
-| Record List（Row Focus） | `Enter` | 进入 Inline Edit（`Enter` 提交 / `Esc` 取消） |
-| Record List（Row Focus） | `M` | 打开 Move to（切换 Record 的 Project 归属） |
-| Record List（Row Focus） | `⌫` (Delete/Backspace) | 移入 Trash（软删除） |
+| Record List（Row Focus） | `⇧↑` / `⇧↓` | 扩展多选选区（也可 ⇧点击 / ⌘点击） |
+| Record List（Row Focus） | `⌘A` | 全选当前列表的 Record |
+| Record List（Row Focus） | `⌘C` | 拷贝选中 Record 的内容（多选时每条一行） |
+| Record List（Row Focus） | `←` | 提高 Priority（向 P0 方向前进一档，已在 P0 不循环；作用于整个选区） |
+| Record List（Row Focus） | `→` | 降低 Priority（向 P3 方向前进一档，已在 P3 不循环；作用于整个选区） |
+| Record List（Row Focus） | `Space` | Toggle Resolved / Reopen（多选时：选区内有 Open 则全部 Resolve，全为 Resolved 才 Reopen） |
+| Record List（Row Focus） | `Enter` | 进入 Inline Edit（`Enter` 提交 / `Esc` 取消；仅单选时有效） |
+| Record List（Row Focus） | `M` | 打开 Move to（切换选中 Record 的 Project 归属） |
+| Record List（Row Focus） | `⌫` (Delete/Backspace) | 移入 Trash（软删除；多选为一步操作，`⌘Z` 一次性还原） |
+| Record List（All View） | 鼠标拖拽 | 拖拽选中行到某个分组，批量调整 Project 归属 |
 | 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Move to Trash |
 | 全局 | `⌘1` | 切到 All |
 | 全局 | `⌘2`…`⌘0` | 按 Project Manual Order 切到对应 Project（第 1–9 个；更多需用 Scope Bar 或鼠标） |
+| 全局 | `⌘,` | 打开 Settings（Record 字号、Launch at Login、iCloud Sync） |
 | 全局 | `⌘W` | 隐藏主窗口（进程继续驻留，不是关闭应用） |
 | 全局 | `⌘Q` | 退出应用 |
 

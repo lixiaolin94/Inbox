@@ -37,6 +37,8 @@ enum UISmokeRunner {
                 pump()
             }
             controller.focusInputAtEnd()
+            try stepWindowGeometry(window: window, controller: controller)
+            try stepChromeGeometry(window: window, controller: controller)
             try stepA(window: window, controller: controller)
             try stepB(window: window, controller: controller, store: store)
             try stepC(window: window, controller: controller, store: store)
@@ -44,6 +46,10 @@ enum UISmokeRunner {
             try stepE(window: window, controller: controller, store: store, betaID: pair.betaID)
             try stepF(window: window, controller: controller, store: store, betaID: pair.betaID, alphaID: pair.alphaID)
             try stepG(window: window, controller: controller, store: store, alphaID: pair.alphaID)
+            try stepH(window: window, controller: controller, store: store, alphaID: pair.alphaID)
+            try stepMultilineRowHeight(window: window, controller: controller)
+            try stepWindowReopen(window: window, controller: controller)
+            try stepSettings(window: window)
             writeLine("UI-SMOKE PASS")
             exit(0)
         } catch {
@@ -53,6 +59,161 @@ enum UISmokeRunner {
     }
 
     // MARK: - Steps
+
+    /// Window opens at 720×480, can grow, and cannot shrink below minSize.
+    private static func stepWindowGeometry(window: NSWindow, controller: MainViewController) throws {
+        try assertContentSize(
+            of: window,
+            equals: MainWindowGeometry.defaultContentSize,
+            "initial window content size"
+        )
+        try assertEqual(window.titleVisibility, .hidden, "titleVisibility hidden")
+        try assertEqual(window.isOpaque, false, "window is translucent")
+        guard let effect = window.contentView as? NSVisualEffectView else {
+            throw SmokeFailure(
+                "content view should be NSVisualEffectView, got \(String(describing: type(of: window.contentView)))"
+            )
+        }
+        try assertEqual(effect.material, NSVisualEffectView.Material.sidebar, "sidebar material")
+        try assertEqual(effect.blendingMode, NSVisualEffectView.BlendingMode.behindWindow, "blur samples behind the window")
+        if !window.styleMask.contains(.fullSizeContentView) {
+            throw SmokeFailure("fullSizeContentView is required so the titlebar shows the window material")
+        }
+        try assertEqual(
+            controller.smokeOfflineNoticeVisible,
+            false,
+            "offline notice hidden when sync engine is off"
+        )
+
+        let originalFrame = window.frame
+
+        var wide = originalFrame
+        wide.size.width = 900
+        window.setFrame(wide, display: true)
+        window.layoutIfNeeded()
+        pump()
+        try assertClose(window.frame.width, 900, "programmatic widen to 900")
+
+        var narrow = window.frame
+        narrow.size.width = 400
+        window.setFrame(narrow, display: true)
+        window.layoutIfNeeded()
+        pump()
+        if window.frame.width < MainWindowGeometry.minimumSize.width {
+            throw SmokeFailure(
+                "minSize should clamp width >= \(MainWindowGeometry.minimumSize.width), got \(window.frame.width)"
+            )
+        }
+
+        window.setFrame(originalFrame, display: true)
+        window.layoutIfNeeded()
+        pump()
+        try assertContentSize(
+            of: window,
+            equals: MainWindowGeometry.defaultContentSize,
+            "content size after restoring original frame"
+        )
+    }
+
+    /// Floating capsule Input is inset from the window edges and sits close
+    /// to the titlebar; Scope Bar is tall enough for glass chips.
+    private static func stepChromeGeometry(window: NSWindow, controller: MainViewController) throws {
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        let capsule = controller.smokeInputCapsuleFrame
+        try assertClose(capsule.height, UniversalInputView.capsuleHeight, "input capsule height")
+        if capsule.minX < 12 {
+            throw SmokeFailure("input capsule should float inset from the leading edge, got x=\(capsule.minX)")
+        }
+        if abs(capsule.width - (controller.view.bounds.width - capsule.minX * 2)) > 2 {
+            throw SmokeFailure("input capsule should keep matching side insets, frame=\(capsule) view=\(controller.view.bounds)")
+        }
+        try waitUntil(showing: "titlebar safe area is applied") {
+            controller.view.safeAreaInsets.top >= 20
+        }
+        let topGap = controller.view.bounds.height - capsule.maxY - controller.view.safeAreaInsets.top
+        if topGap < 4 || topGap > 16 {
+            throw SmokeFailure(
+                "input capsule should sit just below the titlebar, gap=\(topGap) safeArea=\(controller.view.safeAreaInsets.top)"
+            )
+        }
+        try assertClose(controller.smokeScopeBarHeight, 36, "scope bar height")
+        try assertHit(
+            ScopeChipButton.self,
+            in: window,
+            at: midpoint(controller.smokeAllChipFrameInWindow),
+            "All chip"
+        )
+        try assertClose(controller.smokeScopeBarFrame.minX, 0, "scope bar leading at the window edge")
+        try assertClose(
+            controller.smokeScopeBarFrame.width,
+            controller.view.bounds.width,
+            "scope bar spans the window"
+        )
+        try assertClose(
+            controller.smokeScopeBarScrollFrame.minX,
+            0,
+            "scope bar clips at the window edge, not an inner inset"
+        )
+        guard let allChip = controller.smokeAllChipFrame else {
+            throw SmokeFailure("All chip should exist after launch")
+        }
+        try assertClose(allChip.minX, capsule.minX, "All chip aligns with the input capsule")
+        guard let selectedColor = controller.smokeSelectedScopeChipTextColor,
+              let rgb = selectedColor.usingColorSpace(.sRGB) else {
+            throw SmokeFailure("selected scope chip should have a title color")
+        }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        if r < 0.9 || g < 0.9 || b < 0.9 || a < 0.9 {
+            throw SmokeFailure("selected scope chip text should be white, got \(selectedColor)")
+        }
+        try assertClose(Preferences.recordFontSize, Preferences.defaultRecordFontSize, "default record font size")
+    }
+
+    /// ⌘, opens the Settings window; close it so later steps keep the main window.
+    private static func stepSettings(window: NSWindow) throws {
+        guard let appDelegate = NSApp.delegate as? AppDelegate else {
+            throw SmokeFailure("NSApp.delegate is not AppDelegate")
+        }
+        try sendCommand(",", keyCode: KeyCode.comma, window: window)
+        try waitUntil(showing: "Settings window visible") {
+            appDelegate.smokeSettingsWindowVisible()
+        }
+        appDelegate.smokeCloseSettings()
+        try waitUntil(showing: "Settings window hidden") {
+            !appDelegate.smokeSettingsWindowVisible()
+        }
+        window.makeKeyAndOrderFront(nil)
+        pump()
+    }
+
+    /// performClose hides (S5 resident window); presentMainWindow restores
+    /// the same size and puts the caret back in Universal Input.
+    private static func stepWindowReopen(window: NSWindow, controller: MainViewController) throws {
+        try assertContentSize(
+            of: window,
+            equals: MainWindowGeometry.defaultContentSize,
+            "content size before close"
+        )
+        window.performClose(nil)
+        try waitUntil(showing: "window hidden after performClose") { !window.isVisible }
+
+        guard let appDelegate = NSApp.delegate as? AppDelegate else {
+            throw SmokeFailure("NSApp.delegate is not AppDelegate")
+        }
+        appDelegate.presentMainWindow()
+        try waitUntil(showing: "window visible after presentMainWindow") { window.isVisible }
+        try assertContentSize(
+            of: window,
+            equals: MainWindowGeometry.defaultContentSize,
+            "content size after close and presentMainWindow"
+        )
+        try waitUntil(showing: "Universal Input is first responder after reopen") {
+            controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+        }
+    }
 
     /// a. Universal Input is first responder (field editor).
     private static func stepA(window: NSWindow, controller: MainViewController) throws {
@@ -74,6 +235,17 @@ enum UISmokeRunner {
         let db = try searchSync(store: store, includeResolved: true)
         try assertEqual(db.count, 1, "DB should have 1 row after first create")
         try assertEqual(db[0].content, "smoke alpha", "created content")
+
+        try click(at: midpoint(controller.smokeFirstGroupHeaderFrameInWindow), window: window)
+        try waitUntil(showing: "Inbox group collapsed after header click") {
+            controller.smokeFirstGroupCollapsed == true
+                && controller.smokeVisibleRecords.isEmpty
+        }
+        try click(at: midpoint(controller.smokeFirstGroupHeaderFrameInWindow), window: window)
+        try waitUntil(showing: "Inbox group expanded after second header click") {
+            controller.smokeFirstGroupCollapsed == false
+                && controller.smokeVisibleRecords.count == 1
+        }
     }
 
     /// c. Type "smoke beta" + Return → 2 rows.
@@ -190,6 +362,114 @@ enum UISmokeRunner {
             throw SmokeFailure("DB missing alpha after undo")
         }
         try assertEqual(restored.status, RecordStatus.open.rawValue, "restored status")
+    }
+
+    /// h. Multi-select: ⇧↓ extends the selection to two records, ⌘C puts
+    /// both Contents on the pasteboard (one per line), ⌫ trashes both, ⌘Z
+    /// restores both as one undo step, Space resolves both.
+    private static func stepH(
+        window: NSWindow,
+        controller: MainViewController,
+        store: RecordStore,
+        alphaID: String
+    ) throws {
+        try typeText("smoke gamma", window: window, controller: controller)
+        try sendReturn(window: window)
+        try waitUntil(showing: "2 visible records after creating 'smoke gamma'") {
+            controller.smokeVisibleRecords.count == 2
+        }
+        try typeText("smoke delta", window: window, controller: controller)
+        try sendReturn(window: window)
+        try waitUntil(showing: "3 visible records after creating 'smoke delta'") {
+            controller.smokeVisibleRecords.count == 3 && controller.smokeIsInputFirstResponder()
+        }
+
+        try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        try waitUntil(showing: "first record selected before ⇧↓") {
+            controller.smokeIsTableFirstResponder() && controller.smokeSelectedRecords.count == 1
+        }
+        try sendKey(
+            characters: String(NSEvent.SpecialKey.downArrow.unicodeScalar),
+            keyCode: KeyCode.downArrow,
+            flags: .shift,
+            window: window
+        )
+        try waitUntil(showing: "⇧↓ extended selection to 2 records") {
+            controller.smokeSelectedRecords.map(\.content) == ["smoke delta", "smoke gamma"]
+        }
+        let selectedIDs = controller.smokeSelectedRecords.map(\.id)
+
+        // ⌘C: both Contents, display order, one per line. The general
+        // pasteboard is machine-global state — restore it afterwards.
+        let previousClipboard = NSPasteboard.general.string(forType: .string)
+        defer {
+            NSPasteboard.general.clearContents()
+            if let previousClipboard {
+                NSPasteboard.general.setString(previousClipboard, forType: .string)
+            }
+        }
+        try sendCommand("c", keyCode: KeyCode.c, window: window)
+        try waitUntil(showing: "⌘C put both records on the pasteboard") {
+            NSPasteboard.general.string(forType: .string) == "smoke delta\nsmoke gamma"
+        }
+
+        try sendSpecial(keyCode: KeyCode.delete, characters: "\u{7f}", window: window)
+        try waitUntil(showing: "batch ⌫ trashed both selected records") {
+            controller.smokeVisibleRecords.count == 1
+        }
+        try assertEqual(try trashedSync(store: store).count, 2, "trash count after batch delete")
+
+        try sendCommand("z", keyCode: KeyCode.z, window: window)
+        try waitUntil(showing: "⌘Z restored both records in one step") {
+            controller.smokeVisibleRecords.count == 3
+        }
+        try assertEqual(try trashedSync(store: store).count, 0, "trash empty after batch undo")
+        try waitUntil(showing: "restored records are re-selected") {
+            Set(controller.smokeSelectedRecords.map(\.id)) == Set(selectedIDs)
+        }
+
+        try sendSpecial(keyCode: KeyCode.space, characters: " ", window: window)
+        try waitUntil(showing: "batch Space resolved both selected records") {
+            controller.smokeVisibleRecords.count == 1
+                && controller.smokeVisibleRecords.first?.id == alphaID
+        }
+        for id in selectedIDs {
+            guard let db = try store.recordByID(id) else {
+                throw SmokeFailure("DB missing record \(id) after batch resolve")
+            }
+            try assertEqual(db.status, RecordStatus.resolved.rawValue, "batch-resolved status")
+        }
+    }
+
+    /// Long Content wraps and grows the row; ⌫ removes the probe record so
+    /// later steps keep the same list.
+    private static func stepMultilineRowHeight(
+        window: NSWindow,
+        controller: MainViewController
+    ) throws {
+        let longContent = String(repeating: "x", count: 120)
+        try typeText(longContent, window: window, controller: controller)
+        try sendReturn(window: window)
+        try waitUntil(showing: "long record is visible") {
+            controller.smokeVisibleRecords.contains(where: { $0.content == longContent })
+        }
+        guard let longRecord = controller.smokeVisibleRecords.first(where: { $0.content == longContent }) else {
+            throw SmokeFailure("long record missing after create")
+        }
+        try waitUntil(showing: "long record row height > 40pt") {
+            guard let height = controller.smokeRowHeight(forRecordID: longRecord.id) else { return false }
+            return height > 40
+        }
+
+        controller.focusInputAtEnd()
+        try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        try waitUntil(showing: "long record selected before ⌫") {
+            controller.smokeSelectedRecord?.id == longRecord.id
+        }
+        try sendSpecial(keyCode: KeyCode.delete, characters: "\u{7f}", window: window)
+        try waitUntil(showing: "long record removed from the list") {
+            !controller.smokeVisibleRecords.contains(where: { $0.id == longRecord.id })
+        }
     }
 
     // MARK: - Event synthesis
@@ -360,9 +640,81 @@ enum UISmokeRunner {
         _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
     }
 
+    private static func midpoint(_ rect: NSRect?) throws -> NSPoint {
+        guard let rect, rect.width > 0, rect.height > 0 else {
+            throw SmokeFailure("expected a non-empty frame for click hit-testing")
+        }
+        return NSPoint(x: rect.midX, y: rect.midY)
+    }
+
+    private static func hitView(in window: NSWindow, at windowPoint: NSPoint) -> NSView? {
+        guard let content = window.contentView, let parent = content.superview else { return nil }
+        return content.hitTest(parent.convert(windowPoint, from: nil))
+    }
+
+    private static func assertHit<T: NSView>(
+        _ type: T.Type,
+        in window: NSWindow,
+        at windowPoint: NSPoint,
+        _ label: String
+    ) throws {
+        let hit = hitView(in: window, at: windowPoint)
+        guard hit is T else {
+            throw SmokeFailure("\(label): expected \(T.self), got \(String(describing: hit))")
+        }
+        if hit?.mouseDownCanMoveWindow != false {
+            throw SmokeFailure("\(label): hit view must not drag the window")
+        }
+    }
+
+    /// `ScopeChipButton.mouseDown` tracks with `nextEvent`, so queue the
+    /// mouse-up before delivering mouse-down.
+    private static func click(at windowPoint: NSPoint, window: NSWindow) {
+        func mouse(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type,
+                location: windowPoint,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        }
+        guard let down = mouse(.leftMouseDown), let up = mouse(.leftMouseUp) else { return }
+        window.postEvent(up, atStart: false)
+        window.sendEvent(down)
+        pump()
+    }
+
     private static func assertEqual<T: Equatable>(_ actual: T, _ expected: T, _ label: String) throws {
         if actual != expected {
             throw SmokeFailure("\(label): expected \(expected), got \(actual)")
+        }
+    }
+
+    private static func contentSize(of window: NSWindow) -> NSSize {
+        window.contentRect(forFrameRect: window.frame).size
+    }
+
+    private static func assertContentSize(
+        of window: NSWindow,
+        equals expected: NSSize,
+        _ label: String,
+        tolerance: CGFloat = 1
+    ) throws {
+        let actual = contentSize(of: window)
+        if abs(actual.width - expected.width) > tolerance
+            || abs(actual.height - expected.height) > tolerance {
+            throw SmokeFailure("\(label): expected \(expected) ±\(tolerance), got \(actual)")
+        }
+    }
+
+    private static func assertClose(_ actual: CGFloat, _ expected: CGFloat, _ label: String, tolerance: CGFloat = 1) throws {
+        if abs(actual - expected) > tolerance {
+            throw SmokeFailure("\(label): expected \(expected) ±\(tolerance), got \(actual)")
         }
     }
 
@@ -381,7 +733,9 @@ enum UISmokeRunner {
 
     private enum KeyCode {
         static let a: UInt16 = 0
+        static let c: UInt16 = 8
         static let z: UInt16 = 6
+        static let comma: UInt16 = 43
         static let returnKey: UInt16 = 36
         static let space: UInt16 = 49
         static let delete: UInt16 = 51

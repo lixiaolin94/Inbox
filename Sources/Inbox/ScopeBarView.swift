@@ -14,6 +14,14 @@ final class ScopeBarView: NSView {
     var onReorderProjects: (([String]) -> Void)?
     /// Right-click menu for a Project chip (Rename / Delete). All and + have none.
     var onBuildProjectMenu: ((String) -> NSMenu?)?
+    /// Record ids dropped onto a Project chip, plus that Project's id.
+    var onDropRecords: (([String], String?) -> Void)?
+
+    /// Matches Universal Input's side inset so All lines up with the
+    /// capsule. Lives on the chip row, not the clip view: overflow still
+    /// clips at the window edge, and the first chip's glass is not sheared
+    /// 16pt in from that edge.
+    static let chipRowInset: CGFloat = 16
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
@@ -39,7 +47,13 @@ final class ScopeBarView: NSView {
     private func setUp() {
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        stack.spacing = 6
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(
+            top: 0,
+            left: Self.chipRowInset,
+            bottom: 0,
+            right: Self.chipRowInset
+        )
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         clipsToBounds = false
@@ -47,6 +61,9 @@ final class ScopeBarView: NSView {
         scrollView.hasHorizontalScroller = false
         scrollView.hasVerticalScroller = false
         scrollView.drawsBackground = false
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentView.automaticallyAdjustsContentInsets = false
+        scrollView.contentView.clipsToBounds = true
         scrollView.documentView = stack
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
@@ -54,8 +71,8 @@ final class ScopeBarView: NSView {
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
 
             stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scrollView.contentView.bottomAnchor),
@@ -102,6 +119,10 @@ final class ScopeBarView: NSView {
             }
             button.onBuildMenu = { [weak self] in
                 self?.onBuildProjectMenu?(projectID)
+            }
+            button.isDropTarget = true
+            button.onDropRecords = { [weak self] ids in
+                self?.onDropRecords?(ids, projectID)
             }
             stack.addArrangedSubview(button)
             chips.append((projectScope, button))
@@ -232,5 +253,19 @@ final class ScopeBarView: NSView {
         let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
         return image
+    }
+
+    // MARK: - UI smoke
+
+    var smokeScrollFrame: NSRect { scrollView.frame }
+
+    func smokeAllChipFrame(in view: NSView?) -> NSRect? {
+        guard let button = chips.first(where: { $0.scope == .all })?.button else { return nil }
+        return button.convert(button.bounds, to: view)
+    }
+
+    func smokeSelectedChipForegroundColor() -> NSColor? {
+        guard let button = chips.first(where: { $0.button.isSelectedScope })?.button else { return nil }
+        return button.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
     }
 }

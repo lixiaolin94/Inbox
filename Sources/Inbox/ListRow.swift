@@ -171,4 +171,21 @@ enum ListRowIndex {
     static func visibleRecords(in rows: [ListRow]) -> [Record] {
         rows.compactMap(\.record)
     }
+
+    /// Drag & drop (All View): the group a proposed drop row belongs to,
+    /// found by walking upward from `candidateRow` to the nearest group
+    /// header. `candidateRow` may be past the end (drop below the last row —
+    /// clamped) or −1 / before the first header (drop above everything —
+    /// nil, no valid target). Only meaningful for grouped row sequences.
+    static func dropTargetGroup(forCandidateRow candidateRow: Int, in rows: [ListRow]) -> (headerRow: Int, groupID: GroupID)? {
+        guard !rows.isEmpty else { return nil }
+        var row = min(candidateRow, rows.count - 1)
+        while row >= 0 {
+            if let id = rows[row].groupID {
+                return (headerRow: row, groupID: id)
+            }
+            row -= 1
+        }
+        return nil
+    }
 }

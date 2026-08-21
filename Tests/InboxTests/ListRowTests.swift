@@ -413,4 +413,37 @@ final class ListRowTests: XCTestCase {
             .record(older)
         ])
     }
+
+    // MARK: - Drop target group (All View drag-to-move)
+
+    /// rows: [Inbox header, a, b, P1 header, c]
+    private var dropRows: [ListRow] {
+        [
+            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
+            .record(record("a")),
+            .record(record("b")),
+            .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
+            .record(record("c", projectID: "p1"))
+        ]
+    }
+
+    func testDropOnRecordResolvesToItsGroup() {
+        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 2, in: dropRows)?.groupID, .inbox)
+        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 4, in: dropRows)?.groupID, .project("p1"))
+    }
+
+    func testDropOnHeaderResolvesToThatGroup() {
+        let target = ListRowIndex.dropTargetGroup(forCandidateRow: 3, in: dropRows)
+        XCTAssertEqual(target?.groupID, .project("p1"))
+        XCTAssertEqual(target?.headerRow, 3)
+    }
+
+    func testDropPastEndClampsToLastGroup() {
+        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 99, in: dropRows)?.groupID, .project("p1"))
+    }
+
+    func testDropAboveEverythingHasNoTarget() {
+        XCTAssertNil(ListRowIndex.dropTargetGroup(forCandidateRow: -1, in: dropRows))
+        XCTAssertNil(ListRowIndex.dropTargetGroup(forCandidateRow: 0, in: []))
+    }
 }

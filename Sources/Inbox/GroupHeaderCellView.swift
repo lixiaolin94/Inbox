@@ -35,7 +35,9 @@ final class GroupHeaderCellView: NSTableCellView {
         addSubview(titleLabel)
 
         NSLayoutConstraint.activate([
-            disclosureLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            heightAnchor.constraint(equalToConstant: 28),
+
+            disclosureLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             disclosureLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             disclosureLabel.widthAnchor.constraint(equalToConstant: 14),
 
@@ -50,9 +52,12 @@ final class GroupHeaderCellView: NSTableCellView {
         titleLabel.stringValue = title
     }
 
+    /// `hitTest` receives a point in the superview, so compare against `frame`.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        isHidden || !frame.contains(point) ? nil : self
     }
+
+    override var mouseDownCanMoveWindow: Bool { false }
 
     override func mouseDown(with event: NSEvent) {
         onToggle?()

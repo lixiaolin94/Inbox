@@ -15,6 +15,8 @@
 
 同一时间主线上只有一个活跃编码 Slice；相互独立的杂务可用 git worktree 并行。
 
+> **跨设备/跨会话说明**：上表是首个开发周期的实际阵容，不是硬性要求。在任何设备、任何会话中，编码可由当时可用的任何模型执行，协调与审阅可由用户本人或模型担任——**不变的是守则与合并门槛**（§3–§6、§8）。新会话开工前按仓库根 CLAUDE.md 的顺序读文档，接小任务先查 docs/HISTORY.md 的遗留事项清单。
+
 ## 2. 技术基线（PRD 已定项之外的补充决策）
 
 - **工程形态**：双通道。SPM（`swift build` / `swift test` / `swift run`）用于快速滚动验证与 CI；XcodeGen 生成的 `Inbox.xcodeproj` 用于 Xcode 打开与 .app 构建。`project.yml` 是唯一权威工程描述；生成的 `.xcodeproj` 入库（保证 clone 后 Xcode 直接打开），改工程配置必须改 `project.yml` 后重新 `xcodegen generate`，不得手改 pbxproj。（v0.1 修订：原"不入库"决定因用户要求 clone 即开而调整。）
@@ -75,3 +77,18 @@
 | S7 | 打磨与开放数据 | 性能测量记录、Schema 文档、导出边界、Accessibility 基线 |
 
 顺序可由协调者根据风险调整，但每个 Slice 必须独立可验证、可回退。
+
+（进度：S1–S6 已于 2026-08-21 全部合并 main 并发布 v0.2.0；时间线与关键决策见 docs/HISTORY.md。S7 及后续按下节小版本工作流推进。）
+
+## 8. 小版本工作流（MVP 之后的小修与小功能）
+
+- **一样走分支**：`fix/<slug>` 或 `feat/<slug>`，完成后 `--no-ff` 合并 main。再小的改动也不直接在 main 上提交（docs 与工程配置微调除外）。
+- **合并门槛不降**：`swift build`、`swift test`、`.build/debug/Inbox --ui-smoke` 三绿是底线；涉及工程配置/签名/同步的改动加跑 xcodebuild（带 provisioning flags）与必要时的 `--sync-probe` 双库验证。
+- **同步义务**（改了就必须一起改，不欠账）：
+  - UI 行为/几何变化 → 扩展 UISmokeRunner 断言；
+  - 键盘语义变化 → 更新 README 键盘速查表（且不得触碰 PRD §22.2 红线）；
+  - schema 变化 → user_version 步进迁移 + docs/SCHEMA.md；
+  - 工程配置变化 → 只改 project.yml 并重新 xcodegen generate；
+  - 合并后在 docs/HISTORY.md 时间线追加一行，完成的遗留事项打勾、新发现的补录。
+- **范围纪律**：一个分支解决一件事；顺手发现的其他问题记入 docs/HISTORY.md 清单，不在当前分支夹带。
+- **产品语义存疑时停下问用户**，尤其 HISTORY「产品待定」小节里的条目。

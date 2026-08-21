@@ -1,5 +1,23 @@
 import AppKit
+import CloudKit
 import ServiceManagement
+
+/// First-launch content size and the frame floor for resize.
+enum MainWindowGeometry {
+    static let defaultContentSize = NSSize(width: 720, height: 480)
+    static let minimumSize = NSSize(width: 480, height: 320)
+}
+
+/// Applies `minSize`/`maxSize` to `setFrame` as well as live user resize.
+/// Stock `NSWindow.constrainFrameRect` only keeps the frame on-screen.
+private final class InboxWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        var frame = super.constrainFrameRect(frameRect, to: screen)
+        frame.size.width = min(max(frame.size.width, minSize.width), maxSize.width)
+        frame.size.height = min(max(frame.size.height, minSize.height), maxSize.height)
+        return frame
+    }
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
@@ -7,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordStore: RecordStore!
     private var syncEngine: InboxSyncEngine?
     private var statusItem: NSStatusItem?
+    private var settingsWindowController: SettingsWindowController?
     private var launch = LaunchConfiguration.parse([])
 
     /// The dynamic Project section of the Go menu (PRD §9): rebuilt whenever
@@ -56,15 +75,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildMainMenu()
 
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        let window = InboxWindow(
+            contentRect: NSRect(origin: .zero, size: MainWindowGeometry.defaultContentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Inbox"
-        window.minSize = NSSize(width: 480, height: 320)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.isMovableByWindowBackground = true
+        window.minSize = MainWindowGeometry.minimumSize
         window.contentViewController = mainViewController
+        // `contentViewController` assignment sizes the window to the VC's
+        // `preferredContentSize` if non-zero, otherwise Auto Layout
+        // fittingSize. FittingSize here is ~28pt wide (input padding; no
+        // width constraint). `preferredContentSize` would give 720×480 but
+        // then AppKit treats that as a hard size and rejects later
+        // setFrame / user-resize. `minSize` also does not stop the fitting
+        // pass. After mount, set the content size explicitly and center on
+        // that frame. Surfaces fill the content view via autoresizing so
+        // the window is not an Auto Layout window (which would snap back
+        // to fittingSize).
+        window.setContentSize(MainWindowGeometry.defaultContentSize)
         window.delegate = self
         // Hide-on-close: the same NSWindow is reused for Dock, ⌘Tab, and
         // menu-bar Open Inbox. `windowShouldClose` orders it out and
@@ -73,10 +109,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         window.makeKeyAndOrderFront(nil)
+        TitlebarBackdrop.hideSystemFill(in: window)
         self.window = window
 
         installStatusItem()
         NSApp.activate(ignoringOtherApps: true)
+        refreshOfflineNotice()
 
         if launch.isUISmoke {
             UISmokeRunner.start(window: window, controller: mainViewController, store: recordStore)
@@ -187,6 +225,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildAppMenu() -> NSMenu {
         let menu = NSMenu(title: "Inbox")
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(showSettings(_:)),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: "Close",
             action: #selector(NSWindow.performClose(_:)),
@@ -199,6 +245,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: "q"
         )
         return menu
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController()
+            settingsWindowController?.window?.center()
+        }
+        settingsWindowController?.showWindow(self)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func smokeSettingsWindowVisible() -> Bool {
+        settingsWindowController?.window?.isVisible == true
+    }
+
+    func smokeCloseSettings() {
+        settingsWindowController?.window?.orderOut(nil)
+    }
+
+    /// Engine-off (user switch / no entitlement / smoke) stays silent.
+    /// Engine-on with a non-available account shows the utility-bar label.
+    private func refreshOfflineNotice() {
+        guard let syncEngine, let controller = mainViewController else { return }
+        Task {
+            let status = await syncEngine.accountStatus()
+            guard status != .available else { return }
+            await MainActor.run {
+                controller.showOfflineNotice(true)
+            }
+        }
     }
 
     private func buildEditMenu() -> NSMenu {
@@ -292,11 +369,52 @@ extension AppDelegate: NSWindowDelegate {
         mainViewController.undoManager
     }
 
+    func windowDidBecomeMain(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            TitlebarBackdrop.hideSystemFill(in: window)
+        }
+    }
+
     /// Cmd+W / the red traffic light hide the window instead of destroying
     /// it, so the process stays resident for menu-bar / Dock reopen.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         return false
+    }
+}
+
+/// Tahoe/27 still paints a titlebar material even with
+/// `titlebarAppearsTransparent`, which covers the window's sidebar blur.
+/// Hide those fills (not the traffic lights) so the content material
+/// shows through the titlebar.
+private enum TitlebarBackdrop {
+    static func hideSystemFill(in window: NSWindow) {
+        guard let closeButton = window.standardWindowButton(.closeButton) else { return }
+        var cursor: NSView? = closeButton.superview
+        var hops = 0
+        while let view = cursor, hops < 5 {
+            hideFills(in: view, window: window)
+            let name = NSStringFromClass(type(of: view))
+            cursor = view.superview
+            hops += 1
+            if name.contains("TitlebarContainer") { break }
+        }
+    }
+
+    private static func hideFills(in view: NSView, window: NSWindow) {
+        for subview in view.subviews {
+            if subview === window.contentView { continue }
+            if subview is NSButton { continue }
+            if subview is NSVisualEffectView {
+                subview.isHidden = true
+                continue
+            }
+            if #available(macOS 26.0, *) {
+                if subview is NSGlassEffectView {
+                    subview.isHidden = true
+                }
+            }
+        }
     }
 }
 

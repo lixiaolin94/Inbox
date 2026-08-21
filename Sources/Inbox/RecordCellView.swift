@@ -19,9 +19,10 @@ enum InlineEditOutcome {
     case interrupted
 }
 
-/// View-based cell for a Record row: Priority label, single-line Content
+/// View-based cell for a Record row: Priority label, wrapping Content
 /// that can switch into Inline Edit, and a weak relative-time label.
-/// Compact, no card, no buttons.
+/// Compact, no card, no buttons. Trash cells stay single-line (the Trash
+/// table pins row height at 28pt and does not use automatic row heights).
 final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     private let priorityLabel = NSTextField(labelWithString: "")
     private let contentField = NSTextField()
@@ -29,6 +30,10 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     private var priorityLeadingConstraint: NSLayoutConstraint!
     private var priorityWidthConstraint: NSLayoutConstraint!
     private var contentLeadingConstraint: NSLayoutConstraint!
+    private var contentTopConstraint: NSLayoutConstraint!
+    private var contentBottomLimit: NSLayoutConstraint!
+    private var contentBottomEquality: NSLayoutConstraint!
+    private var minHeightConstraint: NSLayoutConstraint!
 
     /// Fired once per Inline Edit session, when it ends. The owner (row's
     /// content, DB persistence) lives in MainViewController — this view only
@@ -52,12 +57,15 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     }
 
     private func setUpViews() {
-        priorityLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let pad = Preferences.recordVerticalPadding
+        let fontSize = Preferences.recordFontSize
+        let sideFont = max(11, fontSize - 3)
+
+        priorityLabel.font = .monospacedDigitSystemFont(ofSize: sideFont, weight: .semibold)
         priorityLabel.alignment = .center
         priorityLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        contentField.font = .systemFont(ofSize: 13)
-        contentField.lineBreakMode = .byTruncatingTail
+        contentField.font = .systemFont(ofSize: fontSize)
         contentField.isEditable = false
         contentField.isSelectable = false
         contentField.isBordered = false
@@ -65,8 +73,14 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         contentField.focusRingType = .none
         contentField.delegate = self
         contentField.translatesAutoresizingMaskIntoConstraints = false
+        applyWrapping(for: .regular)
+        // Low horizontal resistance so wrapping text cannot widen the
+        // window (HISTORY: window collapse from fitting-size). Equal
+        // trailing gives wrapping a defined width.
+        contentField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        contentField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        timeLabel.font = .systemFont(ofSize: 11)
+        timeLabel.font = .systemFont(ofSize: sideFont)
         timeLabel.textColor = .secondaryLabelColor
         timeLabel.alignment = .right
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -75,28 +89,56 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         addSubview(contentField)
         addSubview(timeLabel)
 
-        priorityLeadingConstraint = priorityLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12)
-        priorityWidthConstraint = priorityLabel.widthAnchor.constraint(equalToConstant: 26)
-        contentLeadingConstraint = contentField.leadingAnchor.constraint(equalTo: priorityLabel.trailingAnchor, constant: 8)
+        clipsToBounds = true
+
+        priorityLeadingConstraint = priorityLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16)
+        priorityWidthConstraint = priorityLabel.widthAnchor.constraint(equalToConstant: 28)
+        contentLeadingConstraint = contentField.leadingAnchor.constraint(equalTo: priorityLabel.trailingAnchor, constant: 10)
+        contentTopConstraint = contentField.topAnchor.constraint(equalTo: topAnchor, constant: pad)
+        contentBottomLimit = contentField.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -pad)
+        // Equality at 750 pulls automatic row height to the wrapped text;
+        // it can yield in a pinned Trash row.
+        contentBottomEquality = contentField.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -pad)
+        contentBottomEquality.priority = .defaultHigh
+        minHeightConstraint = heightAnchor.constraint(greaterThanOrEqualToConstant: Preferences.recordRowMinHeight)
 
         NSLayoutConstraint.activate([
+            minHeightConstraint,
+
             priorityLeadingConstraint,
-            priorityLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            priorityLabel.firstBaselineAnchor.constraint(equalTo: contentField.firstBaselineAnchor),
             priorityWidthConstraint,
 
             contentLeadingConstraint,
-            contentField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            contentField.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -8),
+            contentTopConstraint,
+            contentBottomLimit,
+            contentBottomEquality,
+            contentField.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -10),
 
-            timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            timeLabel.widthAnchor.constraint(equalToConstant: 64)
+            timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            timeLabel.firstBaselineAnchor.constraint(equalTo: contentField.firstBaselineAnchor),
+            timeLabel.widthAnchor.constraint(equalToConstant: 68)
         ])
     }
 
+    override func layout() {
+        super.layout()
+        // Wrapping NSTextField needs a max layout width to report a
+        // multi-line intrinsic height for automatic row heights.
+        let wrapWidth = contentField.bounds.width
+        if wrapWidth > 0, contentField.preferredMaxLayoutWidth != wrapWidth {
+            contentField.preferredMaxLayoutWidth = wrapWidth
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     func configure(with record: Record, indented: Bool = false, style: RecordCellStyle = .regular) {
+        applyWrapping(for: style)
+        applyMetrics(for: style)
+        let fontSize = Preferences.recordFontSize
+        let contentFont = NSFont.systemFont(ofSize: fontSize)
         let priority = record.priorityValue
-        priorityLeadingConstraint.constant = indented ? 28 : 12
+        priorityLeadingConstraint.constant = indented ? 32 : 16
 
         if style == .trash {
             priorityLabel.stringValue = ""
@@ -109,7 +151,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             contentField.attributedStringValue = NSAttributedString(
                 string: record.content,
                 attributes: [
-                    .font: NSFont.systemFont(ofSize: 13),
+                    .font: contentFont,
                     .foregroundColor: NSColor.tertiaryLabelColor
                 ]
             )
@@ -117,13 +159,12 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         }
 
         priorityLabel.isHidden = false
-        priorityWidthConstraint.constant = 26
-        contentLeadingConstraint.constant = 8
+        priorityWidthConstraint.constant = 28
+        contentLeadingConstraint.constant = 10
         priorityLabel.stringValue = priority.label
         timeLabel.stringValue = Self.relativeTimeString(fromMillis: record.createdAt)
 
         let resolved = record.status == RecordStatus.resolved.rawValue
-        let contentFont = NSFont.systemFont(ofSize: 13)
         if resolved {
             contentField.attributedStringValue = NSAttributedString(
                 string: record.content,
@@ -148,6 +189,42 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         }
     }
 
+    private func applyMetrics(for style: RecordCellStyle) {
+        let fontSize = Preferences.recordFontSize
+        let pad = style == .trash ? 6 : Preferences.recordVerticalPadding
+        let sideFont = max(11, fontSize - 3)
+        priorityLabel.font = .monospacedDigitSystemFont(ofSize: sideFont, weight: .semibold)
+        timeLabel.font = .systemFont(ofSize: sideFont)
+        contentTopConstraint.constant = pad
+        contentBottomLimit.constant = -pad
+        contentBottomEquality.constant = -pad
+        minHeightConstraint.constant = style == .trash ? 32 : Preferences.recordRowMinHeight
+    }
+
+    /// Trash keeps a 28pt row and clips; wrapping there fights the pinned
+    /// height. Main-list cells wrap so automatic row heights can grow.
+    private func applyWrapping(for style: RecordCellStyle) {
+        if style == .trash {
+            contentField.usesSingleLineMode = true
+            contentField.maximumNumberOfLines = 1
+            contentField.lineBreakMode = .byTruncatingTail
+            if let cell = contentField.cell as? NSTextFieldCell {
+                cell.wraps = false
+                cell.isScrollable = true
+                cell.lineBreakMode = .byTruncatingTail
+            }
+        } else {
+            contentField.usesSingleLineMode = false
+            contentField.maximumNumberOfLines = 0
+            contentField.lineBreakMode = .byWordWrapping
+            if let cell = contentField.cell as? NSTextFieldCell {
+                cell.wraps = true
+                cell.isScrollable = false
+                cell.lineBreakMode = .byWordWrapping
+            }
+        }
+    }
+
     // MARK: - Inline Edit (PRD §8.5)
 
     /// Switches Content into an editable field with the caret at the end,
@@ -160,7 +237,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         contentField.attributedStringValue = NSAttributedString(
             string: text,
             attributes: [
-                .font: NSFont.systemFont(ofSize: 13),
+                .font: NSFont.systemFont(ofSize: Preferences.recordFontSize),
                 .foregroundColor: NSColor.labelColor
             ]
         )

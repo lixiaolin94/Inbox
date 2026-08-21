@@ -17,8 +17,8 @@ final class TrashViewController: NSViewController {
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("TrashRecordCell")
     private static let headerCellIdentifier = NSUserInterfaceItemIdentifier("TrashGroupHeader")
-    private static let rowHeight: CGFloat = 28
-    private static let headerRowHeight: CGFloat = 24
+    private static var rowHeight: CGFloat { max(32, Preferences.recordRowMinHeight - 4) }
+    private static let headerRowHeight: CGFloat = 28
 
     init(store: RecordStore) {
         self.store = store
@@ -104,7 +104,11 @@ final class TrashViewController: NSViewController {
         tableView.onBuildContextMenu = { [weak self] row in
             self?.contextMenu(forRow: row)
         }
-        tableView.onRequestDelete = { [weak self] row in
+        // Trash stays single-select (`allowsMultipleSelection` above), so
+        // the IndexSet is always one row — Permanent Delete is deliberately
+        // per-Record with its own confirm.
+        tableView.onRequestDelete = { [weak self] rows in
+            guard let row = rows.first else { return }
             self?.confirmPermanentDelete(atRow: row)
         }
         tableView.onRequestEscape = { [weak self] in
@@ -115,6 +119,9 @@ final class TrashViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
+        scrollView.contentView.backgroundColor = .clear
+        tableView.backgroundColor = .clear
         scrollView.translatesAutoresizingMaskIntoConstraints = false
     }
 
@@ -163,7 +170,7 @@ final class TrashViewController: NSViewController {
         view.addSubview(actionBar)
 
         NSLayoutConstraint.activate([
-            headerBar.topAnchor.constraint(equalTo: view.topAnchor),
+            headerBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             headerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             headerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             headerBar.heightAnchor.constraint(equalToConstant: 36),
@@ -348,6 +355,10 @@ final class TrashViewController: NSViewController {
 extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
         rows.count
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        ClearTableRowView.dequeue(in: tableView)
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

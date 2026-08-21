@@ -21,8 +21,9 @@ final class ResolvedSectionHeaderCellView: NSTableCellView {
         titleLabel.textColor = .tertiaryLabelColor
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
-        leadingConstraint = titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12)
+        leadingConstraint = titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16)
         NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 26),
             leadingConstraint,
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12)
@@ -30,6 +31,6 @@ final class ResolvedSectionHeaderCellView: NSTableCellView {
     }
 
     func configure(indented: Bool) {
-        leadingConstraint.constant = indented ? 28 : 12
+        leadingConstraint.constant = indented ? 32 : 16
     }
 }

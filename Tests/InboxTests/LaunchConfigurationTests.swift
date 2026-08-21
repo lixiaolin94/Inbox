@@ -78,4 +78,44 @@ final class PreferencesTests: XCTestCase {
         Preferences.configure(suiteName: suiteName)
         XCTAssertNil(Preferences.store.string(forKey: "com.inbox.sortOrder"))
     }
+
+    func testSyncDefaultsToEnabledWhenPreferenceIsMissing() {
+        Preferences.configure(suiteName: suiteName)
+
+        XCTAssertNil(Preferences.store.object(forKey: Preferences.syncEnabledKey))
+        XCTAssertTrue(Preferences.isSyncEnabled)
+    }
+
+    func testSyncCanBeExplicitlyDisabledAndReenabled() {
+        Preferences.configure(suiteName: suiteName)
+
+        Preferences.store.set(false, forKey: Preferences.syncEnabledKey)
+        XCTAssertFalse(Preferences.isSyncEnabled)
+
+        Preferences.store.set(true, forKey: Preferences.syncEnabledKey)
+        XCTAssertTrue(Preferences.isSyncEnabled)
+    }
+
+    func testRecordFontSizeDefaultsToFifteen() {
+        Preferences.configure(suiteName: suiteName)
+        XCTAssertEqual(Preferences.recordFontSize, Preferences.defaultRecordFontSize)
+    }
+
+    func testRecordFontSizeClampsToSupportedRange() {
+        Preferences.configure(suiteName: suiteName)
+        Preferences.recordFontSize = 99
+        XCTAssertEqual(Preferences.recordFontSize, Preferences.maxRecordFontSize)
+        Preferences.recordFontSize = 8
+        XCTAssertEqual(Preferences.recordFontSize, Preferences.minRecordFontSize)
+        Preferences.recordFontSize = 17
+        XCTAssertEqual(Preferences.recordFontSize, 17)
+    }
+
+    func testRecordRowMinHeightTracksFontSize() {
+        Preferences.configure(suiteName: suiteName)
+        Preferences.recordFontSize = 15
+        XCTAssertEqual(Preferences.recordRowMinHeight, 35)
+        Preferences.recordFontSize = 18
+        XCTAssertEqual(Preferences.recordRowMinHeight, 38)
+    }
 }

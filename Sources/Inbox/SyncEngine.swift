@@ -49,7 +49,8 @@ final class InboxSyncEngine: @unchecked Sendable {
         guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
             return false
         }
-        return hasCloudKitContainerEntitlement()
+        guard hasCloudKitContainerEntitlement() else { return false }
+        return Preferences.isSyncEnabled
     }
 
     static func makeIfEnabled(store: RecordStore, stateURL: URL, launch: LaunchConfiguration) -> InboxSyncEngine? {

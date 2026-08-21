@@ -11,13 +11,15 @@ final class MainViewController: NSViewController {
     private let deleteUndoManager = UndoManager()
 
     private let mainSurface = NSView()
-    private let inputField = NSTextField()
+    private let universalInput = UniversalInputView()
+    private var inputField: NSTextField { universalInput.textField }
     private let scopeBar = ScopeBarView()
     private let tableView = RecordTableView()
     private let scrollView = NSScrollView()
     private let utilityBar = NSView()
     private let showResolvedCheckbox = NSButton(checkboxWithTitle: "Show Resolved", target: nil, action: nil)
     private let sortPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let offlineNoticeLabel = NSTextField(labelWithString: "iCloud unavailable · offline")
     private let trashButton = NSButton(title: "Trash", target: nil, action: nil)
 
     private var records: [Record] = []
@@ -53,9 +55,6 @@ final class MainViewController: NSViewController {
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("RecordCell")
     private static let headerCellIdentifier = NSUserInterfaceItemIdentifier("GroupHeaderCell")
     private static let resolvedHeaderCellIdentifier = NSUserInterfaceItemIdentifier("ResolvedSectionHeader")
-    private static let rowHeight: CGFloat = 28
-    private static let headerRowHeight: CGFloat = 24
-    private static let resolvedHeaderRowHeight: CGFloat = 22
 
     init(store: RecordStore) {
         self.store = store
@@ -72,7 +71,11 @@ final class MainViewController: NSViewController {
     }
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 480))
+        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: MainWindowGeometry.defaultContentSize))
+        effect.material = .sidebar
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        view = effect
     }
 
     override func viewDidLoad() {
@@ -91,10 +94,24 @@ final class MainViewController: NSViewController {
             name: .inboxDidApplyRemoteChanges,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceDidChange),
+            name: .inboxAppearanceDidChange,
+            object: nil
+        )
     }
 
     @objc private func remoteChangesApplied() {
         reloadProjectsThenSearch()
+        if isShowingTrash {
+            trashViewController.reload(projects: projects)
+        }
+    }
+
+    @objc private func appearanceDidChange() {
+        tableView.rowHeight = Preferences.recordRowMinHeight
+        rebuildRowsAndReload()
         if isShowingTrash {
             trashViewController.reload(projects: projects)
         }
@@ -108,13 +125,13 @@ final class MainViewController: NSViewController {
     // MARK: - Set up
 
     private func setUpInput() {
-        inputField.placeholderString = "Capture or search…"
-        inputField.font = .systemFont(ofSize: 16)
-        inputField.isBordered = false
-        inputField.focusRingType = .none
-        inputField.drawsBackground = false
         inputField.delegate = self
-        inputField.translatesAutoresizingMaskIntoConstraints = false
+        universalInput.translatesAutoresizingMaskIntoConstraints = false
+        // Default NSTextField hugging is 750; with leading+trailing pins that
+        // would rather keep the window at the field's intrinsic width than
+        // let the user widen it. The scroll view is the expanding spacer.
+        universalInput.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        universalInput.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
     private func setUpScopeBar() {
@@ -131,6 +148,9 @@ final class MainViewController: NSViewController {
         scopeBar.onBuildProjectMenu = { [weak self] projectID in
             self?.projectAdminMenu(projectID: projectID)
         }
+        scopeBar.onDropRecords = { [weak self] ids, projectID in
+            self?.moveRecords(ids: ids, to: projectID)
+        }
     }
 
     private func setUpTable() {
@@ -142,25 +162,32 @@ final class MainViewController: NSViewController {
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.style = .plain
         tableView.rowSizeStyle = .custom
+        tableView.usesAutomaticRowHeights = true
+        tableView.rowHeight = Preferences.recordRowMinHeight
+        tableView.intercellSpacing = NSSize(width: 0, height: 6)
         tableView.selectionHighlightStyle = .regular
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
         tableView.dataSource = self
         tableView.delegate = self
+        // Drag source/target for All View drag-to-move (PRD §8.7 semantics,
+        // drag UI). Local-only: rows never leave the app as a drag.
+        tableView.registerForDraggedTypes([RecordDragTypes.recordID])
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.onRequestReturnFocusToInput = { [weak self] in
             self?.focusInputAtEnd()
         }
-        tableView.onAdjustPriority = { [weak self] row, adjustment in
-            self?.adjustPriority(atRow: row, adjustment: adjustment)
+        tableView.onAdjustPriority = { [weak self] rows, adjustment in
+            self?.adjustPriority(atRows: rows, adjustment: adjustment)
         }
-        tableView.onToggleResolve = { [weak self] row in
-            self?.toggleResolve(atRow: row)
+        tableView.onToggleResolve = { [weak self] rows in
+            self?.toggleResolve(atRows: rows)
         }
         tableView.onRequestBeginInlineEdit = { [weak self] row in
             self?.beginInlineEdit(atRow: row)
         }
-        tableView.onRequestMoveMenu = { [weak self] row in
-            self?.popMoveMenu(atRow: row)
+        tableView.onRequestMoveMenu = { [weak self] rows in
+            self?.popMoveMenu(forRows: rows)
         }
         tableView.isNavigableRow = { [weak self] row in
             self?.record(atTableRow: row) != nil
@@ -168,15 +195,25 @@ final class MainViewController: NSViewController {
         tableView.onBuildContextMenu = { [weak self] row in
             self?.contextMenu(forRow: row)
         }
-        tableView.onRequestDelete = { [weak self] row in
-            self?.moveFocusedRecordToTrash(atRow: row)
+        tableView.onRequestDelete = { [weak self] rows in
+            self?.moveSelectedRecordsToTrash(atRows: rows)
+        }
+        tableView.onRequestCopy = { [weak self] rows in
+            self?.copyRecords(atRows: rows)
         }
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
+        scrollView.contentView.backgroundColor = .clear
+        tableView.backgroundColor = .clear
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        scrollView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
     }
 
     private func restoreDisplayPreferences() {
@@ -214,9 +251,17 @@ final class MainViewController: NSViewController {
         trashButton.translatesAutoresizingMaskIntoConstraints = false
         trashButton.setContentHuggingPriority(.required, for: .horizontal)
 
+        offlineNoticeLabel.font = .systemFont(ofSize: 11)
+        offlineNoticeLabel.textColor = .secondaryLabelColor
+        offlineNoticeLabel.isHidden = true
+        offlineNoticeLabel.translatesAutoresizingMaskIntoConstraints = false
+        offlineNoticeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        offlineNoticeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         utilityBar.translatesAutoresizingMaskIntoConstraints = false
         utilityBar.addSubview(showResolvedCheckbox)
         utilityBar.addSubview(sortPopUp)
+        utilityBar.addSubview(offlineNoticeLabel)
         utilityBar.addSubview(trashButton)
 
         NSLayoutConstraint.activate([
@@ -227,8 +272,16 @@ final class MainViewController: NSViewController {
             sortPopUp.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
 
             trashButton.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -12),
-            trashButton.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor)
+            trashButton.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+
+            offlineNoticeLabel.trailingAnchor.constraint(equalTo: trashButton.leadingAnchor, constant: -8),
+            offlineNoticeLabel.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sortPopUp.trailingAnchor, constant: 8)
         ])
+    }
+
+    func showOfflineNotice(_ visible: Bool) {
+        offlineNoticeLabel.isHidden = !visible
     }
 
     @objc private func showResolvedToggled(_ sender: NSButton) {
@@ -248,7 +301,14 @@ final class MainViewController: NSViewController {
     }
 
     private func setUpLayout() {
-        mainSurface.translatesAutoresizingMaskIntoConstraints = false
+        // Fill the window via autoresizing, not Auto Layout pins to the
+        // content view. Edge constraints on the content view turn the
+        // NSWindow into an Auto Layout window, which then sizes itself to
+        // fittingSize (~28pt = input leading+trailing padding). Internal
+        // layout below still uses Auto Layout inside `mainSurface`.
+        mainSurface.translatesAutoresizingMaskIntoConstraints = true
+        mainSurface.autoresizingMask = [.width, .height]
+        mainSurface.frame = view.bounds
         view.addSubview(mainSurface)
 
         let topSeparator = NSBox()
@@ -259,7 +319,7 @@ final class MainViewController: NSViewController {
         bottomSeparator.boxType = .separator
         bottomSeparator.translatesAutoresizingMaskIntoConstraints = false
 
-        mainSurface.addSubview(inputField)
+        mainSurface.addSubview(universalInput)
         mainSurface.addSubview(scopeBar)
         mainSurface.addSubview(topSeparator)
         mainSurface.addSubview(scrollView)
@@ -267,19 +327,15 @@ final class MainViewController: NSViewController {
         mainSurface.addSubview(utilityBar)
 
         NSLayoutConstraint.activate([
-            mainSurface.topAnchor.constraint(equalTo: view.topAnchor),
-            mainSurface.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            mainSurface.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            mainSurface.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            universalInput.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: 16),
+            universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -16),
+            universalInput.heightAnchor.constraint(equalToConstant: UniversalInputView.capsuleHeight),
 
-            inputField.topAnchor.constraint(equalTo: mainSurface.topAnchor, constant: 14),
-            inputField.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: 14),
-            inputField.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -14),
-
-            scopeBar.topAnchor.constraint(equalTo: inputField.bottomAnchor, constant: 12),
+            scopeBar.topAnchor.constraint(equalTo: universalInput.bottomAnchor, constant: 8),
             scopeBar.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
             scopeBar.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
-            scopeBar.heightAnchor.constraint(equalToConstant: 30),
+            scopeBar.heightAnchor.constraint(equalToConstant: 36),
 
             topSeparator.topAnchor.constraint(equalTo: scopeBar.bottomAnchor),
             topSeparator.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
@@ -304,18 +360,14 @@ final class MainViewController: NSViewController {
     private func setUpTrashSurface() {
         addChild(trashViewController)
         let trashView = trashViewController.view
-        trashView.translatesAutoresizingMaskIntoConstraints = false
+        trashView.translatesAutoresizingMaskIntoConstraints = true
+        trashView.autoresizingMask = [.width, .height]
+        trashView.frame = view.bounds
         trashView.isHidden = true
         view.addSubview(trashView)
         trashViewController.onClose = { [weak self] in
             self?.closeTrash()
         }
-        NSLayoutConstraint.activate([
-            trashView.topAnchor.constraint(equalTo: view.topAnchor),
-            trashView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            trashView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            trashView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
     }
 
     // MARK: - Focus routing
@@ -382,64 +434,121 @@ final class MainViewController: NSViewController {
         alert.runModal()
     }
 
+    // MARK: - Batch plumbing (multi-select)
+
+    /// Fires one store write per id and reports once after the last
+    /// completion (all store completions land on the main queue, in order,
+    /// so the shared counters need no locking). On any failure the caller
+    /// gets the first error; the store's serial queue has still applied the
+    /// other writes, so callers must re-sync from the DB rather than patch
+    /// local state.
+    private func performBatch(
+        ids: [String],
+        operation: (String, @escaping (Result<Void, Error>) -> Void) -> Void,
+        completion: @escaping (Error?) -> Void
+    ) {
+        guard !ids.isEmpty else {
+            completion(nil)
+            return
+        }
+        var remaining = ids.count
+        var firstError: Error?
+        for id in ids {
+            operation(id) { result in
+                if case .failure(let error) = result, firstError == nil {
+                    firstError = error
+                }
+                remaining -= 1
+                if remaining == 0 {
+                    completion(firstError)
+                }
+            }
+        }
+    }
+
+    private func records(atTableRows rowIndexes: IndexSet) -> [Record] {
+        rowIndexes.compactMap { record(atTableRow: $0) }
+    }
+
     // MARK: - Row Focus: Priority (PRD §8.4)
 
-    private func adjustPriority(atRow row: Int, adjustment: PriorityAdjustment) {
-        guard let record = record(atTableRow: row) else { return }
-        let newPriority = adjustment.apply(to: record.priorityValue)
-        guard newPriority != record.priorityValue else { return } // already at the boundary
+    private func adjustPriority(atRows rowIndexes: IndexSet, adjustment: PriorityAdjustment) {
+        let selected = records(atTableRows: rowIndexes)
+        // Each Record clamps at its own boundary; ones already at P0/P3
+        // stay put while the rest move one step.
+        let targets = selected.compactMap { record -> (id: String, priority: Priority)? in
+            let newPriority = adjustment.apply(to: record.priorityValue)
+            return newPriority == record.priorityValue ? nil : (record.id, newPriority)
+        }
+        guard !targets.isEmpty else { return }
+        let selectedIDs = selected.map(\.id)
 
-        store.updatePriority(id: record.id, priority: newPriority.rawValue) { [weak self] result in
+        performBatch(ids: targets.map(\.id), operation: { id, done in
+            guard let priority = targets.first(where: { $0.id == id })?.priority else { return }
+            store.updatePriority(id: id, priority: priority.rawValue, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                // Rebuild so Priority sort can move the row; then re-select
-                // by id (PRD §8.4 / §23.3) — Focus follows this Record.
-                self.applyLocalRecordUpdate(id: record.id) { $0.priority = newPriority.rawValue }
-                self.records = self.sortOrder.sorted(self.records)
-                self.rebuildRowsAndReload()
-                if let newRow = self.tableRow(forRecordID: record.id) {
-                    self.returnFocusToRow(newRow)
-                }
-            case .failure(let error):
+            if let error {
                 self.presentPersistenceFailure(error: error)
+                self.refreshVisibleSurface()
+                return
             }
+            // Rebuild so Priority sort can move the rows; then re-select
+            // by id (PRD §8.4 / §23.3) — Focus follows these Records.
+            for target in targets {
+                self.applyLocalRecordUpdate(id: target.id) { $0.priority = target.priority.rawValue }
+            }
+            self.records = self.sortOrder.sorted(self.records)
+            self.rebuildRowsAndReload()
+            self.returnFocusToRecords(ids: selectedIDs)
         }
     }
 
     // MARK: - Row Focus: Resolve (PRD §8.6)
 
-    private func toggleResolve(atRow row: Int) {
-        guard let record = record(atTableRow: row) else { return }
-        let willResolve = record.status == RecordStatus.open.rawValue
+    /// Space on a selection: if any selected Record is Open the whole action
+    /// is Resolve (Open ones flip, Resolved ones stay); only an all-Resolved
+    /// selection means Reopen. Matches the single-row toggle when one row is
+    /// selected.
+    private func toggleResolve(atRows rowIndexes: IndexSet) {
+        let selected = records(atTableRows: rowIndexes)
+        guard !selected.isEmpty else { return }
+        let openIDs = selected.filter { $0.status == RecordStatus.open.rawValue }.map(\.id)
+        let willResolve = !openIDs.isEmpty
+        let targetIDs = willResolve ? openIDs : selected.map(\.id)
         let newStatus: RecordStatus = willResolve ? .resolved : .open
 
-        store.setStatus(id: record.id, status: newStatus) { [weak self] result in
+        performBatch(ids: targetIDs, operation: { id, done in
+            store.setStatus(id: id, status: newStatus, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.applyResolveResult(recordID: record.id, resolved: willResolve)
-            case .failure(let error):
+            if let error {
                 self.presentPersistenceFailure(error: error)
+                self.refreshVisibleSurface()
+                return
             }
+            self.applyResolveResult(recordIDs: targetIDs, resolved: willResolve)
         }
     }
 
-    /// Space toggles Resolved (PRD §8.6). Show Resolved Off: the row leaves
+    /// Space toggles Resolved (PRD §8.6). Show Resolved Off: the rows leave
     /// the list and Focus walks the remaining Open sequence. Show Resolved
-    /// On: the row moves into the Resolved group but Focus stays on the next
-    /// Open Record. Reopen moves the row back to Open and Focus follows it.
-    private func applyResolveResult(recordID: String, resolved: Bool) {
+    /// On: the rows move into the Resolved group but Focus stays on the next
+    /// Open Record. Reopen moves the rows back to Open and Focus follows them.
+    private func applyResolveResult(recordIDs: [String], resolved: Bool) {
+        let idSet = Set(recordIDs)
         let previousOpenIDs = visibleRecords()
             .filter { $0.status == RecordStatus.open.rawValue }
             .map(\.id)
 
-        applyLocalRecordUpdate(id: recordID) { rec in
-            rec.status = (resolved ? RecordStatus.resolved : RecordStatus.open).rawValue
-            rec.resolvedAt = resolved ? rec.updatedAt : nil
+        for id in recordIDs {
+            applyLocalRecordUpdate(id: id) { rec in
+                rec.status = (resolved ? RecordStatus.resolved : RecordStatus.open).rawValue
+                rec.resolvedAt = resolved ? rec.updatedAt : nil
+            }
         }
         if resolved && !showResolved {
-            records.removeAll { $0.id == recordID }
+            records.removeAll { idSet.contains($0.id) }
         }
         rebuildRowsAndReload()
 
@@ -447,27 +556,32 @@ final class MainViewController: NSViewController {
             let remainingOpenIDs = visibleRecords()
                 .filter { $0.status == RecordStatus.open.rawValue }
                 .map(\.id)
-            if let nextID = RowFocusInheritance.nextOpenRecordID(
-                afterResolving: recordID,
-                previousOpenIDs: previousOpenIDs,
-                remainingOpenIDs: remainingOpenIDs
-            ), let row = tableRow(forRecordID: nextID) {
+            // The first resolved id's Open index equals its slot in the
+            // remaining sequence (nothing before it was removed), so the
+            // single-removal inheritance rule applies unchanged.
+            if let firstIndex = previousOpenIDs.firstIndex(where: { idSet.contains($0) }),
+               let nextIndex = RowFocusInheritance.nextFocusIndex(
+                   afterRemovingRowAt: firstIndex,
+                   remainingCount: remainingOpenIDs.count
+               ),
+               let row = tableRow(forRecordID: remainingOpenIDs[nextIndex]) {
                 returnFocusToRow(row)
             } else {
                 focusInputAtEnd()
             }
-        } else if let row = tableRow(forRecordID: recordID) {
-            returnFocusToRow(row)
         } else {
-            focusInputAtEnd()
+            returnFocusToRecords(ids: recordIDs)
         }
     }
 
     /// Focus inheritance (PRD §8.6) walks the visible Record sequence, not
     /// table rows — group headers and Resolved section headers are skipped
-    /// the same way ↑↓ skip them.
-    private func inheritFocus(removedID: String, previousVisibleIDs: [String]) {
-        guard let index = previousVisibleIDs.firstIndex(of: removedID) else {
+    /// the same way ↑↓ skip them. For a batch removal the first removed id's
+    /// index doubles as its slot in the remaining sequence (no removed rows
+    /// precede it), so the single-removal rule covers both cases.
+    private func inheritFocus(removedIDs: [String], previousVisibleIDs: [String]) {
+        let idSet = Set(removedIDs)
+        guard let index = previousVisibleIDs.firstIndex(where: { idSet.contains($0) }) else {
             focusInputAtEnd()
             return
         }
@@ -478,6 +592,18 @@ final class MainViewController: NSViewController {
         } else {
             focusInputAtEnd()
         }
+    }
+
+    // MARK: - Copy (⌘C)
+
+    /// Puts the selected Records' Content on the general pasteboard, one
+    /// Record per line in display order.
+    private func copyRecords(atRows rowIndexes: IndexSet) {
+        let contents = records(atTableRows: rowIndexes).map(\.content)
+        guard !contents.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(contents.joined(separator: "\n"), forType: .string)
     }
 
     // MARK: - Row Focus: Inline Edit (PRD §8.5)
@@ -568,6 +694,26 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
+    }
+
+    /// Multi-select counterpart of `returnFocusToRow`: re-selects every id
+    /// still visible (a batch action may have moved rows), scrolled to the
+    /// topmost. All gone → back to Universal Input.
+    private func returnFocusToRecords(ids: [String]) {
+        guard let window = view.window else { return }
+        var indexes = IndexSet()
+        for id in ids {
+            if let row = tableRow(forRecordID: id) {
+                indexes.insert(row)
+            }
+        }
+        guard let first = indexes.first else {
+            focusInputAtEnd()
+            return
+        }
+        window.makeFirstResponder(tableView)
+        tableView.selectRowIndexes(indexes, byExtendingSelection: false)
+        tableView.scrollRowToVisible(first)
     }
 
     // MARK: - Scope (PRD §6.6, §7, §9)
@@ -710,7 +856,7 @@ final class MainViewController: NSViewController {
 
     // MARK: - Search
 
-    private func performSearch(term: String, preservingFocus: Bool = false, selectRecordID: String? = nil) {
+    private func performSearch(term: String, preservingFocus: Bool = false, selectRecordIDs: [String] = []) {
         searchGeneration += 1
         let generation = searchGeneration
         let focusedID = preservingFocus ? record(atTableRow: tableView.selectedRow)?.id : nil
@@ -727,8 +873,8 @@ final class MainViewController: NSViewController {
             if case .success(let records) = result {
                 self.records = records
                 self.rebuildRowsAndReload()
-                if let selectRecordID, let row = self.tableRow(forRecordID: selectRecordID) {
-                    self.returnFocusToRow(row)
+                if !selectRecordIDs.isEmpty, selectRecordIDs.contains(where: { self.tableRow(forRecordID: $0) != nil }) {
+                    self.returnFocusToRecords(ids: selectRecordIDs)
                     return
                 }
                 guard preservingFocus, let focusedID else { return }
@@ -740,7 +886,7 @@ final class MainViewController: NSViewController {
                         self.tableView.scrollRowToVisible(row)
                     }
                 } else if wasTableFocused {
-                    self.inheritFocus(removedID: focusedID, previousVisibleIDs: previousVisibleIDs)
+                    self.inheritFocus(removedIDs: [focusedID], previousVisibleIDs: previousVisibleIDs)
                 }
             }
         }
@@ -822,7 +968,7 @@ final class MainViewController: NSViewController {
 
         if collapsing, let focusedID, tableRow(forRecordID: focusedID) == nil {
             if view.window?.firstResponder === tableView {
-                inheritFocus(removedID: focusedID, previousVisibleIDs: previousVisibleIDs)
+                inheritFocus(removedIDs: [focusedID], previousVisibleIDs: previousVisibleIDs)
             } else {
                 tableView.deselectAll(nil)
             }
@@ -925,32 +1071,38 @@ final class MainViewController: NSViewController {
         case .resolvedSectionHeader:
             return nil
         case .record(let record):
+            // Right-click inside a multi-selection targets the whole
+            // selection (RecordTableView keeps it); outside, just this row.
+            let selectedRows = tableView.selectedNavigableRows
+            let targets = selectedRows.contains(row) ? records(atTableRows: selectedRows) : [record]
             let menu = NSMenu()
             let moveItem = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
-            moveItem.submenu = makeMoveDestinationMenu(for: record)
+            moveItem.submenu = makeMoveDestinationMenu(for: targets)
             menu.addItem(moveItem)
             menu.addItem(.separator())
             let trashItem = NSMenuItem(title: "Move to Trash", action: #selector(moveToTrashFromMenu(_:)), keyEquivalent: "")
             trashItem.target = self
-            trashItem.representedObject = record.id
+            trashItem.representedObject = targets.map(\.id)
             menu.addItem(trashItem)
             return menu
         }
     }
 
-    private func popMoveMenu(atRow row: Int) {
-        guard let record = record(atTableRow: row) else { return }
-        let menu = makeMoveDestinationMenu(for: record)
-        let rect = tableView.rect(ofRow: row)
+    private func popMoveMenu(forRows rowIndexes: IndexSet) {
+        let targets = records(atTableRows: rowIndexes)
+        guard !targets.isEmpty, let anchorRow = rowIndexes.first else { return }
+        let menu = makeMoveDestinationMenu(for: targets)
+        let rect = tableView.rect(ofRow: anchorRow)
         menu.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.midY), in: tableView)
     }
 
-    private func makeMoveDestinationMenu(for record: Record) -> NSMenu {
+    private func makeMoveDestinationMenu(for targets: [Record]) -> NSMenu {
         let menu = NSMenu()
+        let ids = targets.map(\.id)
         let inbox = NSMenuItem(title: "Inbox", action: #selector(moveRecordFromMenu(_:)), keyEquivalent: "")
         inbox.target = self
-        inbox.representedObject = RecordMoveCommand(recordID: record.id, projectID: nil)
-        inbox.state = record.projectID == nil ? .on : .off
+        inbox.representedObject = RecordMoveCommand(recordIDs: ids, projectID: nil)
+        inbox.state = targets.allSatisfy { $0.projectID == nil } ? .on : .off
         menu.addItem(inbox)
         if !projects.isEmpty {
             menu.addItem(.separator())
@@ -958,8 +1110,8 @@ final class MainViewController: NSViewController {
         for project in projects {
             let item = NSMenuItem(title: project.name, action: #selector(moveRecordFromMenu(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = RecordMoveCommand(recordID: record.id, projectID: project.id)
-            item.state = record.projectID == project.id ? .on : .off
+            item.representedObject = RecordMoveCommand(recordIDs: ids, projectID: project.id)
+            item.state = targets.allSatisfy { $0.projectID == project.id } ? .on : .off
             menu.addItem(item)
         }
         return menu
@@ -967,25 +1119,29 @@ final class MainViewController: NSViewController {
 
     @objc private func moveRecordFromMenu(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? RecordMoveCommand else { return }
-        moveRecord(id: command.recordID, to: command.projectID)
+        moveRecords(ids: command.recordIDs, to: command.projectID)
     }
 
-    private func moveRecord(id: String, to projectID: String?) {
-        guard let record = records.first(where: { $0.id == id }) else { return }
-        guard record.projectID != projectID else { return }
+    private func moveRecords(ids: [String], to projectID: String?) {
+        let moving = ids.filter { id in
+            records.first(where: { $0.id == id })?.projectID != projectID
+        }
+        guard !moving.isEmpty else { return }
 
-        store.updateProject(id: id, projectID: projectID) { [weak self] result in
+        performBatch(ids: moving, operation: { id, done in
+            store.updateProject(id: id, projectID: projectID, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.applyMoveResult(recordID: id, newProjectID: projectID)
-            case .failure(let error):
+            if let error {
                 self.presentPersistenceFailure(error: error)
+                self.refreshVisibleSurface()
+                return
             }
+            self.applyMoveResult(recordIDs: moving, newProjectID: projectID)
         }
     }
 
-    private func applyMoveResult(recordID: String, newProjectID: String?) {
+    private func applyMoveResult(recordIDs: [String], newProjectID: String?) {
         let leavesCurrentScope: Bool
         switch currentScope {
         case .all:
@@ -995,19 +1151,42 @@ final class MainViewController: NSViewController {
         }
 
         if leavesCurrentScope {
+            let idSet = Set(recordIDs)
             let previousVisibleIDs = visibleRecords().map(\.id)
-            records.removeAll { $0.id == recordID }
+            records.removeAll { idSet.contains($0.id) }
             rebuildRowsAndReload()
-            inheritFocus(removedID: recordID, previousVisibleIDs: previousVisibleIDs)
+            inheritFocus(removedIDs: recordIDs, previousVisibleIDs: previousVisibleIDs)
             return
         }
 
-        applyLocalRecordUpdate(id: recordID) { $0.projectID = newProjectID }
+        for id in recordIDs {
+            applyLocalRecordUpdate(id: id) { $0.projectID = newProjectID }
+        }
         let destination: GroupID = newProjectID.map { .project($0) } ?? .inbox
         setGroupCollapsed(destination, collapsed: false)
         rebuildRowsAndReload()
-        if let row = tableRow(forRecordID: recordID) {
-            returnFocusToRow(row)
+        returnFocusToRecords(ids: recordIDs)
+    }
+
+    // MARK: - Drag to move (All View)
+
+    private func draggedRecordIDs(from info: NSDraggingInfo) -> [String] {
+        guard let items = info.draggingPasteboard.pasteboardItems else { return [] }
+        return items.compactMap { $0.string(forType: RecordDragTypes.recordID) }
+    }
+
+    /// The group a proposed drop resolves to. `.above` a row belongs to the
+    /// group of the row above the gap, so a drop just below a group's last
+    /// row still targets that group.
+    private func dropTargetGroup(forProposedRow row: Int, dropOperation: NSTableView.DropOperation) -> (headerRow: Int, groupID: GroupID)? {
+        let candidate = dropOperation == .on ? row : row - 1
+        return ListRowIndex.dropTargetGroup(forCandidateRow: candidate, in: rows)
+    }
+
+    private func projectID(for groupID: GroupID) -> String? {
+        switch groupID {
+        case .inbox: return nil
+        case .project(let id): return id
         }
     }
 
@@ -1015,88 +1194,99 @@ final class MainViewController: NSViewController {
 
     private var isShowingTrash: Bool { !trashViewController.view.isHidden }
 
-    private func moveFocusedRecordToTrash(atRow row: Int) {
-        guard editingRowIndex == nil, let record = record(atTableRow: row) else { return }
-        moveRecordToTrash(id: record.id)
+    private func moveSelectedRecordsToTrash(atRows rowIndexes: IndexSet) {
+        guard editingRowIndex == nil else { return }
+        let ids = records(atTableRows: rowIndexes).map(\.id)
+        guard !ids.isEmpty else { return }
+        moveRecordsToTrash(ids: ids)
     }
 
     @objc private func moveToTrashFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        moveRecordToTrash(id: id)
+        guard let ids = sender.representedObject as? [String], !ids.isEmpty else { return }
+        moveRecordsToTrash(ids: ids)
     }
 
-    private func moveRecordToTrash(id: String) {
-        store.moveToTrash(id: id) { [weak self] result in
+    /// A multi-select delete is one undo step: the whole batch registers a
+    /// single undo action after every write commits, so ⌘Z restores all of
+    /// it at once.
+    private func moveRecordsToTrash(ids: [String]) {
+        performBatch(ids: ids, operation: { id, done in
+            store.moveToTrash(id: id, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.registerUndoRestore(id: id)
-                self.applyMoveToTrashUI(recordID: id)
-            case .failure(let error):
+            if let error {
                 self.presentPersistenceFailure(error: error)
+                self.refreshVisibleSurface()
+                return
             }
+            self.registerUndoRestore(ids: ids)
+            self.applyMoveToTrashUI(recordIDs: ids)
         }
     }
 
-    /// Inverse of `moveRecordToTrash`, invoked by UndoManager. Registers the
+    /// Inverse of `moveRecordsToTrash`, invoked by UndoManager. Registers the
     /// redo action synchronously while `isUndoing` is still true — the store
     /// write itself is async and must not be the place that re-registers.
-    private func restoreRecordFromTrashForUndo(id: String) {
+    private func restoreRecordsFromTrashForUndo(ids: [String]) {
         undoManager?.registerUndo(withTarget: self) { target in
-            target.moveRecordToTrashForRedo(id: id)
+            target.moveRecordsToTrashForRedo(ids: ids)
         }
         undoManager?.setActionName("Move to Trash")
-        store.restoreFromTrash(id: id) { [weak self] result in
+        performBatch(ids: ids, operation: { id, done in
+            store.restoreFromTrash(id: id) { done($0.map { _ in () }) }
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success(let record):
-                self.applyRestoreUI(record)
-            case .failure:
+            if error != nil {
                 self.refreshVisibleSurface()
+                return
             }
+            self.applyRestoreUI(recordIDs: ids)
         }
     }
 
-    private func moveRecordToTrashForRedo(id: String) {
+    private func moveRecordsToTrashForRedo(ids: [String]) {
         undoManager?.registerUndo(withTarget: self) { target in
-            target.restoreRecordFromTrashForUndo(id: id)
+            target.restoreRecordsFromTrashForUndo(ids: ids)
         }
         undoManager?.setActionName("Move to Trash")
-        store.moveToTrash(id: id) { [weak self] result in
+        performBatch(ids: ids, operation: { id, done in
+            store.moveToTrash(id: id, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.applyMoveToTrashUI(recordID: id)
-            case .failure(let error):
+            if let error {
                 self.presentPersistenceFailure(error: error)
+                self.refreshVisibleSurface()
+                return
             }
+            self.applyMoveToTrashUI(recordIDs: ids)
         }
     }
 
-    private func registerUndoRestore(id: String) {
+    private func registerUndoRestore(ids: [String]) {
         undoManager?.registerUndo(withTarget: self) { target in
-            target.restoreRecordFromTrashForUndo(id: id)
+            target.restoreRecordsFromTrashForUndo(ids: ids)
         }
         undoManager?.setActionName("Move to Trash")
     }
 
-    private func applyMoveToTrashUI(recordID: String) {
+    private func applyMoveToTrashUI(recordIDs: [String]) {
         if isShowingTrash {
             trashViewController.reload(projects: projects)
             return
         }
+        let idSet = Set(recordIDs)
         let previousVisibleIDs = visibleRecords().map(\.id)
-        records.removeAll { $0.id == recordID }
+        records.removeAll { idSet.contains($0.id) }
         rebuildRowsAndReload()
-        inheritFocus(removedID: recordID, previousVisibleIDs: previousVisibleIDs)
+        inheritFocus(removedIDs: recordIDs, previousVisibleIDs: previousVisibleIDs)
     }
 
-    private func applyRestoreUI(_ record: Record) {
+    private func applyRestoreUI(recordIDs: [String]) {
         if isShowingTrash {
             trashViewController.reload(projects: projects)
             return
         }
-        performSearch(term: inputField.stringValue, preservingFocus: true, selectRecordID: record.id)
+        performSearch(term: inputField.stringValue, preservingFocus: true, selectRecordIDs: recordIDs)
     }
 
     private func refreshVisibleSurface() {
@@ -1129,6 +1319,7 @@ final class MainViewController: NSViewController {
     var smokeInputString: String { inputField.stringValue }
     var smokeVisibleRecords: [Record] { visibleRecords() }
     var smokeSelectedRecord: Record? { record(atTableRow: tableView.selectedRow) }
+    var smokeSelectedRecords: [Record] { records(atTableRows: tableView.selectedNavigableRows) }
 
     func smokeIsInputFirstResponder() -> Bool {
         guard let window = view.window else { return false }
@@ -1139,14 +1330,54 @@ final class MainViewController: NSViewController {
     func smokeIsTableFirstResponder() -> Bool {
         view.window?.firstResponder === tableView
     }
+
+    var smokeOfflineNoticeVisible: Bool { !offlineNoticeLabel.isHidden }
+
+    func smokeRowHeight(forRecordID id: String) -> CGFloat? {
+        guard let row = tableRow(forRecordID: id) else { return nil }
+        tableView.scrollRowToVisible(row)
+        _ = tableView.view(atColumn: 0, row: row, makeIfNecessary: true)
+        tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
+        tableView.layoutSubtreeIfNeeded()
+        return tableView.rect(ofRow: row).height
+    }
+
+    var smokeInputCapsuleFrame: NSRect { universalInput.frame }
+    var smokeScopeBarHeight: CGFloat { scopeBar.frame.height }
+    var smokeScopeBarFrame: NSRect { scopeBar.frame }
+    var smokeScopeBarScrollFrame: NSRect {
+        scopeBar.convert(scopeBar.smokeScrollFrame, to: mainSurface)
+    }
+    var smokeAllChipFrame: NSRect? { scopeBar.smokeAllChipFrame(in: mainSurface) }
+    var smokeAllChipFrameInWindow: NSRect? { scopeBar.smokeAllChipFrame(in: nil) }
+    var smokeSelectedScopeChipTextColor: NSColor? { scopeBar.smokeSelectedChipForegroundColor() }
+
+    var smokeFirstGroupHeaderFrameInWindow: NSRect? {
+        for row in 0..<tableView.numberOfRows {
+            guard case .groupHeader = rows[row] else { continue }
+            tableView.scrollRowToVisible(row)
+            _ = tableView.rowView(atRow: row, makeIfNecessary: true)
+            _ = tableView.view(atColumn: 0, row: row, makeIfNecessary: true)
+            tableView.layoutSubtreeIfNeeded()
+            return tableView.convert(tableView.rect(ofRow: row), to: nil)
+        }
+        return nil
+    }
+
+    var smokeFirstGroupCollapsed: Bool? {
+        for row in rows {
+            if case .groupHeader(_, _, let collapsed) = row { return collapsed }
+        }
+        return nil
+    }
 }
 
 private final class RecordMoveCommand: NSObject {
-    let recordID: String
+    let recordIDs: [String]
     let projectID: String?
 
-    init(recordID: String, projectID: String?) {
-        self.recordID = recordID
+    init(recordIDs: [String], projectID: String?) {
+        self.recordIDs = recordIDs
         self.projectID = projectID
     }
 }
@@ -1179,6 +1410,10 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
         rows.count
     }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        ClearTableRowView.dequeue(in: tableView)
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         switch rows[row] {
         case .groupHeader(let id, let title, let isCollapsed):
@@ -1206,15 +1441,55 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        switch rows[row] {
-        case .groupHeader: return Self.headerRowHeight
-        case .resolvedSectionHeader: return Self.resolvedHeaderRowHeight
-        case .record: return Self.rowHeight
-        }
+    /// Multi-select filter: only Record rows can enter the selection —
+    /// covers clicks, ⇧clicks, ⌘clicks, and rubber-band drags in one place
+    /// (with this implemented, `shouldSelectRow` would not be consulted).
+    func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposedSelectionIndexes: IndexSet) -> IndexSet {
+        IndexSet(proposedSelectionIndexes.filter { record(atTableRow: $0) != nil })
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        record(atTableRow: row) != nil
+    // MARK: - Drag to move (All View only)
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard isGrouped, let record = record(atTableRow: row) else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(record.id, forType: RecordDragTypes.recordID)
+        return item
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        validateDrop info: NSDraggingInfo,
+        proposedRow row: Int,
+        proposedDropOperation dropOperation: NSTableView.DropOperation
+    ) -> NSDragOperation {
+        guard isGrouped,
+              let target = dropTargetGroup(forProposedRow: row, dropOperation: dropOperation) else { return [] }
+        let ids = draggedRecordIDs(from: info)
+        guard !ids.isEmpty else { return [] }
+        let destinationProjectID = projectID(for: target.groupID)
+        // Every dragged Record already lives in the target group → nothing
+        // to move, don't light up the drop.
+        guard ids.contains(where: { id in
+            records.first(where: { $0.id == id })?.projectID != destinationProjectID
+        }) else { return [] }
+        // Retarget onto the group header so the whole group highlights as
+        // one drop target — there is no manual order inside a group to hit.
+        tableView.setDropRow(target.headerRow, dropOperation: .on)
+        return .move
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        acceptDrop info: NSDraggingInfo,
+        row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
+        guard isGrouped,
+              let target = dropTargetGroup(forProposedRow: row, dropOperation: dropOperation) else { return false }
+        let ids = draggedRecordIDs(from: info)
+        guard !ids.isEmpty else { return false }
+        moveRecords(ids: ids, to: projectID(for: target.groupID))
+        return true
     }
 }
