@@ -31,25 +31,18 @@ final class MainViewController: NSViewController {
     /// Bottom-bar controls are the same custom chip as the Scope Bar, on
     /// purpose: measured against platform accessory-bar NSButtons the chip
     /// paints ~3–8 ms faster on first draw and ~2 ms per redraw each, and
-    /// it is maintained for the Scope Bar anyway (HISTORY 性能基线, R7).
+    /// it is maintained for the Scope Bar anyway (HISTORY 性能基线).
     let utilityBar = NSView()
-    let resolvedChip = ScopeChipButton(title: "Resolved")
-    let sortChip = ScopeChipButton(title: "Newest")
+    let resolvedChip = ScopeChipButton(title: "")
+    let sortChip = ScopeChipButton(title: "")
     /// Weak "N conflicts" badge (PRD §15.3); hidden while the count is 0.
     /// Clicking filters the list to the conflict pairs and back.
     let conflictsChip = ScopeChipButton(title: "")
     let offlineNoticeLabel = NSTextField(labelWithString: "iCloud unavailable · offline")
-    let trashButton = ScopeChipButton(title: "Trash")
-    /// Function group (left) and key-hint group (right) of the utility bar
-    /// (ui.md §5). Stacks, so a hidden Conflicts chip or hint bar leaves
-    /// no gap behind.
+    let trashButton = ScopeChipButton(title: "")
+    /// Function group of the utility bar (ui.md §5): icon buttons in a
+    /// stack, so a hidden Conflicts chip leaves no gap behind.
     let functionGroup = NSStackView()
-    let hintGroup = NSStackView()
-    let hintBar = HintBarView()
-    /// Hint tiers for the current focus state, widest first; `fitHints`
-    /// shows the first one that fits beside the function group.
-    private var hintTiers: [[HintBarView.Hint]] = []
-    private var hintFitWidth: CGFloat?
 
     var records: [Record] = []
     /// Both halves of every unresolved conflict pair in `records` (PRD
@@ -86,9 +79,7 @@ final class MainViewController: NSViewController {
     /// Non-nil while a row's Content is in Inline Edit (PRD §8.5). This is
     /// the third focus state beyond Input Focus / Row Focus. It is a table
     /// row index, never a `records` array index — convert via `record(atTableRow:)`.
-    var editingRowIndex: Int? {
-        didSet { refreshHints() }
-    }
+    var editingRowIndex: Int?
     /// Fitting height of the row being edited, updated on every keystroke
     /// (`RecordCellView.onEditingHeightChanged`); read by `heightOfRow`.
     var editingRowHeight: CGFloat?
@@ -173,7 +164,6 @@ final class MainViewController: NSViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         listDissolve.update()
-        fitHints()
     }
 
     // MARK: - Set up
@@ -216,14 +206,14 @@ final class MainViewController: NSViewController {
         tableView.usesAlternatingRowBackgroundColors = false
         // `.plain` still insets cells ~10pt from the scroll edge, which
         // parked list text under All's letters (the chip's inner padding)
-        // instead of All's capsule edge. Full width puts the 16pt rail on
+        // instead of All's capsule edge. Full width puts the list rail on
         // the same window x as the chip.
         tableView.style = .fullWidth
         tableView.rowSizeStyle = .custom
         // Explicit heights (see heightOfRow): automatic row heights reset
         // every row to an estimate on reloadData and re-measure lazily,
         // which jumped the scroll offset, never shrank a row, and dropped
-        // the selection on resize (R19).
+        // the selection on resize.
         tableView.usesAutomaticRowHeights = false
         tableView.rowHeight = Preferences.recordRowMinHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 6)
@@ -245,6 +235,8 @@ final class MainViewController: NSViewController {
         tableView.onToggleResolve = { [weak self] rows in
             self?.toggleResolve(atRows: rows)
         }
+        tableView.target = self
+        tableView.doubleAction = #selector(tableDoubleClicked(_:))
         tableView.onRequestBeginInlineEdit = { [weak self] row in
             self?.beginInlineEdit(atRow: row)
         }
@@ -292,8 +284,7 @@ final class MainViewController: NSViewController {
         resolvedChip.onClick = { [weak self] in self?.toggleShowResolved() }
         resolvedChip.setContentHuggingPriority(.required, for: .horizontal)
 
-        sortChip.chipTitle = sortOrder.chipTitle
-        sortChip.toolTip = "Sort: Newest ⇄ Priority"
+        applySortChipSymbol()
         sortChip.onClick = { [weak self] in self?.toggleSort() }
         sortChip.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -302,6 +293,9 @@ final class MainViewController: NSViewController {
         conflictsChip.onClick = { [weak self] in self?.toggleShowOnlyConflicts() }
         conflictsChip.setContentHuggingPriority(.required, for: .horizontal)
 
+        trashButton.symbolName = "trash"
+        trashButton.toolTip = "Trash"
+        trashButton.setAccessibilityLabel("Trash")
         trashButton.onClick = { [weak self] in self?.openTrash() }
         trashButton.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -315,72 +309,41 @@ final class MainViewController: NSViewController {
         functionGroup.alignment = .centerY
         functionGroup.spacing = Theme.Size.chipSpacing
         functionGroup.translatesAutoresizingMaskIntoConstraints = false
+        // Resolved / Sort / Trash are square icon buttons; Conflicts keeps
+        // its count as text because it only appears when there is news.
+        for chip in [resolvedChip, sortChip, trashButton] {
+            chip.iconOnly = true
+        }
         for chip in [resolvedChip, sortChip, conflictsChip, trashButton] {
             chip.style = .filled
             functionGroup.addArrangedSubview(chip)
         }
 
-        hintGroup.orientation = .horizontal
-        hintGroup.alignment = .centerY
-        hintGroup.spacing = Theme.Spacing.md
-        hintGroup.translatesAutoresizingMaskIntoConstraints = false
-        hintGroup.addArrangedSubview(offlineNoticeLabel)
-        hintGroup.addArrangedSubview(hintBar)
-
+        offlineNoticeLabel.translatesAutoresizingMaskIntoConstraints = false
         utilityBar.translatesAutoresizingMaskIntoConstraints = false
         utilityBar.addSubview(functionGroup)
-        utilityBar.addSubview(hintGroup)
+        utilityBar.addSubview(offlineNoticeLabel)
 
         NSLayoutConstraint.activate([
             functionGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.windowInset),
             functionGroup.bottomAnchor.constraint(equalTo: utilityBar.bottomAnchor, constant: -Theme.Size.windowInset),
 
-            // Hints follow the buttons' centre line, not the bar's.
-            hintGroup.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.windowInset),
-            hintGroup.centerYAnchor.constraint(equalTo: functionGroup.centerYAnchor),
-            hintGroup.leadingAnchor.constraint(greaterThanOrEqualTo: functionGroup.trailingAnchor, constant: Theme.Spacing.xl)
+            offlineNoticeLabel.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.windowInset),
+            offlineNoticeLabel.centerYAnchor.constraint(equalTo: functionGroup.centerYAnchor),
+            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: functionGroup.trailingAnchor, constant: Theme.Spacing.xl)
         ])
+    }
+
+    /// The sort button shows what the list is sorted by; clicking flips it.
+    private func applySortChipSymbol() {
+        sortChip.symbolName = sortOrder == .newestFirst ? "clock" : "flag"
+        sortChip.toolTip = "Sorted by \(sortOrder.chipTitle) — click for \(sortOrder.next.chipTitle)"
+        sortChip.setAccessibilityLabel("Sort by \(sortOrder.next.chipTitle)")
+        sortChip.setAccessibilityValue(sortOrder.chipTitle)
     }
 
     func showOfflineNotice(_ visible: Bool) {
         offlineNoticeLabel.isHidden = !visible
-    }
-
-    /// Key hints follow the focus state (ui.md §5). Derived from first
-    /// responder and `editingRowIndex` at every focus move, never stored.
-    /// Two per state at most: Priority and Trash are deliberately unlisted.
-    func refreshHints() {
-        if editingRowIndex != nil {
-            hintTiers = [[("↵", "Save"), ("esc", "Cancel")]]
-        } else if view.window?.firstResponder === tableView {
-            hintTiers = [[("↵", "Edit"), ("␣", "Resolve")]]
-        } else {
-            hintTiers = [[("↵", "Create"), ("↓", "List")]]
-        }
-        hintFitWidth = nil
-        fitHints()
-    }
-
-    /// Shows the widest tier that fits beside the function group, or none:
-    /// hints give way before anything else in the bar. Measured from
-    /// fitting sizes and the view width rather than subview frames, which
-    /// are a layout pass behind in `viewDidLayout`.
-    private func fitHints() {
-        var reserved = Theme.Size.windowInset + functionGroup.fittingSize.width + Theme.Spacing.xl + Theme.Size.windowInset
-        if !offlineNoticeLabel.isHidden {
-            reserved += offlineNoticeLabel.fittingSize.width + Theme.Spacing.md
-        }
-        let available = view.bounds.width - reserved
-        guard available != hintFitWidth else { return }
-        hintFitWidth = available
-        for tier in hintTiers {
-            hintBar.show(tier)
-            if hintBar.fittingSize.width <= available {
-                hintBar.isHidden = false
-                return
-            }
-        }
-        hintBar.isHidden = true
     }
 
     private func applyResolvedChipSymbol() {
@@ -423,7 +386,7 @@ final class MainViewController: NSViewController {
     /// The sort chip is a two-state toggle (Newest ⇄ Priority); no menu.
     func toggleSort() {
         sortOrder = sortOrder.next
-        sortChip.chipTitle = sortOrder.chipTitle
+        applySortChipSymbol()
         Preferences.sortOrder = sortOrder
         performSearch(term: inputField.stringValue, preservingFocus: true)
     }
@@ -470,7 +433,6 @@ final class MainViewController: NSViewController {
             utilityBar.heightAnchor.constraint(equalToConstant: Theme.Size.utilityBarHeight)
         ])
         listDissolve.update()
-        refreshHints()
     }
 
     private func setUpTrashSurface() {
@@ -501,7 +463,6 @@ final class MainViewController: NSViewController {
             let end = editor.string.utf16.count
             editor.selectedRange = NSRange(location: end, length: 0)
         }
-        refreshHints()
     }
 
     private func focusFirstRow() {
@@ -509,7 +470,6 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
-        refreshHints()
     }
 
     /// Focus inheritance (PRD §8.6) walks the visible Record sequence, not
@@ -539,7 +499,6 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
-        refreshHints()
     }
 
     /// Multi-select counterpart of `returnFocusToRow`: re-selects every id
@@ -560,7 +519,6 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(indexes, byExtendingSelection: false)
         tableView.scrollRowToVisible(first)
-        refreshHints()
     }
 
     // MARK: - Search
@@ -717,7 +675,6 @@ extension MainViewController: NSTextFieldDelegate {
     /// the Row Focus selection here too.
     func controlTextDidBeginEditing(_ obj: Notification) {
         tableView.deselectAll(nil)
-        refreshHints()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -797,10 +754,6 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
     /// A click on a row moves first responder and the selection in one go;
     /// this is the one hook both share.
     func tableViewSelectionDidChange(_ notification: Notification) {
-        refreshHints()
     }
 }
 
-/// 1 pt of `Theme.Ink.hairline`. Painted in `updateLayer` so the dynamic
-/// colour is resolved under the view's effective appearance and follows
-/// light/dark on its own.

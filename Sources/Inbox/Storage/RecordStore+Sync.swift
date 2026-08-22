@@ -93,26 +93,6 @@ extension RecordStore {
         }
     }
 
-    func prepareMergedRecordForResave(
-        id: String,
-        payload: ConflictMerger.RecordFields,
-        metadata: Data?
-    ) throws {
-        try queue.sync {
-            try Self.upsertRecordPayload(db: db, id: id, payload: payload, metadata: metadata, registerPending: true)
-        }
-    }
-
-    func prepareMergedProjectForResave(
-        id: String,
-        payload: ConflictMerger.ProjectFields,
-        metadata: Data?
-    ) throws {
-        try queue.sync {
-            try Self.upsertProjectPayload(db: db, id: id, payload: payload, metadata: metadata, registerPending: true)
-        }
-    }
-
     // MARK: On-queue implementations (also used via syncPerform)
 
     static func applyFetchedRecord(

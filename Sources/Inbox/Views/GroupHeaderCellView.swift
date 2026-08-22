@@ -110,9 +110,9 @@ final class GroupHeaderCellView: NSTableCellView {
         disclosureView.convert(disclosureView.bounds, to: view).minX
     }
 
-    func smokeDisclosureMaxX(in view: NSView?) -> CGFloat {
-        disclosureView.convert(disclosureView.bounds, to: view).maxX
+    func smokeDisclosureFrame(in view: NSView?) -> NSRect {
+        disclosureView.convert(disclosureView.bounds, to: view)
     }
 
-    var smokeDisclosureHidden: Bool { disclosureView.isHidden }
+
 }

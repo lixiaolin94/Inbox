@@ -31,7 +31,9 @@ final class UniversalInputView: NSView {
             chrome.trailingAnchor.constraint(equalTo: trailingAnchor)
         ])
 
-        textField.placeholderString = "Record or search…"
+        // First thing a new user reads. Recording comes first — search is
+        // the same field and shows itself as you type.
+        textField.placeholderString = "Type a record, Enter to save"
         textField.font = Theme.Typography.input
         textField.textColor = Theme.Ink.primary
         textField.isBordered = false

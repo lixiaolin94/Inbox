@@ -9,8 +9,8 @@ final class TrashViewController: NSViewController {
     private let tableView = RecordTableView()
     private let scrollView = OverlayScrollView()
     private let backChip = ScopeChipButton(title: "Back")
-    private let restoreButton = ScopeChipButton(title: "Restore")
-    private let deletePermanentlyButton = ScopeChipButton(title: "Delete Permanently")
+    private let restoreButton = ScopeChipButton(title: "")
+    private let deletePermanentlyButton = ScopeChipButton(title: "")
     private lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: Theme.Size.utilityBarHeight)
 
     private var records: [Record] = []
@@ -151,9 +151,8 @@ final class TrashViewController: NSViewController {
         let headerBar = NSView()
         headerBar.translatesAutoresizingMaskIntoConstraints = false
 
-        // Back sits where "All" sits on the main surface — on the 16pt rail,
-        // with the surface title beside it — but plain: it is a way out,
-        // not an action, so it carries no fill.
+        // Back sits where "All" sits on the main surface, but plain: it is
+        // a way out, not an action, so it carries no fill.
         backChip.style = .plain
         backChip.symbolName = "chevron.left"
         backChip.toolTip = "Back to Inbox (esc)"
@@ -162,18 +161,31 @@ final class TrashViewController: NSViewController {
         backChip.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(backChip)
 
-        let titleLabel = NSTextField(labelWithString: "Trash")
-        titleLabel.font = Theme.Typography.groupHeader
-        titleLabel.textColor = Theme.Ink.tertiary
+        // The surface title sits where a window title would — centred in
+        // the (transparent) titlebar zone above the safe area — so the
+        // immersive chrome stays and the surface is still named.
+        let titleLabel = WindowTitleLabel(labelWithString: "Trash")
+        titleLabel.font = Theme.Typography.windowTitle
+        titleLabel.textColor = Theme.Ink.secondary
         titleLabel.refusesFirstResponder = true
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        headerBar.addSubview(titleLabel)
+        view.addSubview(titleLabel)
+        let titleZone = NSLayoutGuide()
+        view.addLayoutGuide(titleZone)
 
         restoreButton.style = .filled
+        restoreButton.iconOnly = true
+        restoreButton.symbolName = "arrow.uturn.backward"
+        restoreButton.toolTip = "Restore"
+        restoreButton.setAccessibilityLabel("Restore")
         restoreButton.onClick = { [weak self] in self?.restoreSelected() }
         restoreButton.translatesAutoresizingMaskIntoConstraints = false
 
         deletePermanentlyButton.style = .filled
+        deletePermanentlyButton.iconOnly = true
+        deletePermanentlyButton.symbolName = "xmark.bin"
+        deletePermanentlyButton.toolTip = "Delete Permanently"
+        deletePermanentlyButton.setAccessibilityLabel("Delete Permanently")
         deletePermanentlyButton.onClick = { [weak self] in self?.deleteSelectedPermanently() }
         deletePermanentlyButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -202,10 +214,17 @@ final class TrashViewController: NSViewController {
             headerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             headerBar.heightAnchor.constraint(equalToConstant: Theme.Size.scopeBarHeight),
 
-            backChip.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: Theme.Size.windowInset),
+            // 4pt left of the rail so the chevron's ink lands on the list
+            // text rail (optical, like listTextNudge).
+            backChip.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: Theme.Size.windowInset - Theme.Spacing.xs),
             backChip.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
-            titleLabel.leadingAnchor.constraint(equalTo: backChip.trailingAnchor, constant: Theme.Size.chipSpacing),
-            titleLabel.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+
+            titleZone.topAnchor.constraint(equalTo: view.topAnchor),
+            titleZone.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            titleZone.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            titleZone.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            titleLabel.centerXAnchor.constraint(equalTo: titleZone.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: titleZone.centerYAnchor),
 
             actionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -402,6 +421,7 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     var smokeAllowsMultipleSelection: Bool { tableView.allowsMultipleSelection }
+    var smokeTitleFrame: NSRect? { view.subviews.first { $0 is WindowTitleLabel }?.frame }
     var smokeScrollInsets: NSEdgeInsets { scrollView.contentInsets }
     var smokeActionChips: [ScopeChipButton] { [restoreButton, deletePermanentlyButton] }
     var smokeBackChip: ScopeChipButton { backChip }
@@ -412,4 +432,10 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
         return tableView.rect(ofRow: row).height
     }
     var smokeTableIsFirstResponder: Bool { view.window?.firstResponder === tableView }
+}
+
+/// A label in the titlebar zone must not swallow the drag that moves the
+/// window there. Shared by Trash and the Settings window.
+final class WindowTitleLabel: NSTextField {
+    override var mouseDownCanMoveWindow: Bool { true }
 }

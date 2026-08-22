@@ -44,7 +44,7 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 .build/debug/Inbox --ui-smoke
 ```
 
-`--ui-smoke` 会在进程内通过 `NSEvent` 合成真实键盘事件，驱动完整的 Create → Search → Priority → Resolve → Inline Edit → Delete → Undo 链路，并断言窗口与 chrome 几何（见 [`Sources/Inbox/UISmokeRunner.swift`](Sources/Inbox/Diagnostics/UISmokeRunner.swift)，探针在 [`MainViewController+Smoke.swift`](Sources/Inbox/Surfaces/MainViewController+Smoke.swift)）。该模式使用临时数据库路径和独立的 `UserDefaults` suite（`com.xiaolin.Inbox.smoke`），不会触碰真实数据；完成后打印 `UI-SMOKE PASS` 并以退出码 0 结束，失败则打印 `UI-SMOKE FAIL: …` 并以非零退出码结束。注意：中文/输入法组合无法通过合成按键事件覆盖，此冒烟只验证 ASCII 路径。
+`--ui-smoke` 会在进程内通过 `NSEvent` 合成真实键盘事件，驱动完整的 Create → Search → Priority → Resolve → Inline Edit → Delete → Undo 链路，并断言窗口与 chrome 几何（见 [`Sources/Inbox/Diagnostics/UISmokeRunner*.swift`](Sources/Inbox/Diagnostics/UISmokeRunner.swift)，探针在 [`MainViewController+Smoke.swift`](Sources/Inbox/Surfaces/MainViewController+Smoke.swift)）。该模式使用临时数据库路径和独立的 `UserDefaults` suite（`com.xiaolin.Inbox.smoke`），不会触碰真实数据；完成后打印 `UI-SMOKE PASS` 并以退出码 0 结束，失败则打印 `UI-SMOKE FAIL: …` 并以非零退出码结束。注意：中文/输入法组合无法通过合成按键事件覆盖，此冒烟只验证 ASCII 路径。
 
 ## 键盘速查表
 
@@ -60,6 +60,8 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | Record List（Row Focus） | `→` | 降低 Priority（向 P3 方向前进一档，已在 P3 不循环；作用于整个选区） |
 | Record List（Row Focus） | `Space` | Toggle Resolved / Reopen（多选时：选区内有 Open 则全部 Resolve，全为 Resolved 才 Reopen） |
 | Record List（Row Focus） | `Enter` | 进入 Inline Edit（`Enter` 提交 / `Esc` 取消；仅单选时有效） |
+| Record List | 鼠标双击 | 进入 Inline Edit，光标落在双击位置最近的插入点 |
+| Record List | 右键 | Mark as Resolved / Reopen（多选作用于整个选区，`⌘Z` 可撤销）、Move to ▸、Move to Trash；冲突行多一项 Resolve Conflict ▸ |
 | Record List（Row Focus） | `⌫` (Delete/Backspace) | 移入 Trash（软删除；多选为一步操作，`⌘Z` 一次性还原） |
 | Record List（All View） | 鼠标拖拽 | 拖拽选中行到某个分组，批量调整 Project 归属 |
 | 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Resolve·Reopen、Move（改 Project）、Move to Trash |

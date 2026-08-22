@@ -123,9 +123,9 @@ final class RecordTableView: NSTableView {
     }
 
     /// AppKit still insets the cell inside the row (~6pt) even with
-    /// `.fullWidth`. Stretch to the row so the 16pt rail matches All.
+    /// `.fullWidth`. Stretch to the row so the text rail matches All.
     /// Re-checked 2026-08-22 on macOS 26.6: without this and the row
-    /// view's `layout()` the text rail lands at 31 instead of 25.
+    /// view's `layout()` the text rail lands ~6pt right of All's letters.
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         var frame = super.frameOfCell(atColumn: column, row: row)
         let rowFrame = rect(ofRow: row)
@@ -376,11 +376,11 @@ final class ClearTableRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 
     /// AppKit insets the cell inside the row even with `.fullWidth`. Pin
-    /// cells to the table's full width so the 16pt rail matches All — but
-    /// keep AppKit's vertical placement: with automatic row heights the row
-    /// is fitting height + intercellSpacing and the cell sits centred in it.
-    /// Stretching the cell to the row height left its subviews laid out for
-    /// the shorter height, so the selection showed uneven top/bottom gaps.
+    /// cells to the table's full width so the text rail matches All — but
+    /// keep AppKit's vertical placement: the row is the cell's height +
+    /// intercellSpacing and the cell sits centred in it. Stretching the cell
+    /// to the row height left its subviews laid out for the shorter height,
+    /// so the selection showed uneven top/bottom gaps.
     override func layout() {
         super.layout()
         let width = (superview as? NSTableView)?.bounds.width ?? bounds.width

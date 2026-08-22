@@ -190,7 +190,7 @@ final class ScopeBarView: NSView {
         stack.layoutSubtreeIfNeeded()
         if index == 0 {
             // "All": rest at the origin rather than letting scrollToVisible
-            // clamp the clip onto the chip (which hid the 16pt row inset).
+            // clamp the clip onto the chip (which hid the row inset).
             scrollView.contentView.scroll(to: .zero)
             scrollView.reflectScrolledClipView(scrollView.contentView)
         } else {
@@ -362,6 +362,11 @@ final class ScopeBarView: NSView {
 
     func smokeAllTitleMinX(in view: NSView?) -> CGFloat? {
         chips.first(where: { $0.scope == .all })?.button.smokeTitleMinX(in: view)
+    }
+
+    func smokeAllChipAndTitleFrames(in view: NSView?) -> (chip: NSRect, title: NSRect)? {
+        guard let button = chips.first(where: { $0.scope == .all })?.button else { return nil }
+        return (button.convert(button.bounds, to: view), button.smokeTitleFrame(in: view))
     }
 
     func smokeAddButtonFrame(in view: NSView?) -> NSRect {

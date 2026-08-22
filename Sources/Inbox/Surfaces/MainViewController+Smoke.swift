@@ -115,22 +115,8 @@ extension MainViewController {
         control.convert(control.bounds, to: mainSurface)
     }
 
-    var smokeFunctionGroupMaxX: CGFloat { smokeUtilityControlFrame(functionGroup).maxX }
-    /// "key action" per hint, empty while the bar is hidden.
-    var smokeHintTexts: [String] { hintBar.isHidden ? [] : hintBar.hintTexts }
-    var smokeHintBarFrame: NSRect? { hintBar.isHidden ? nil : smokeUtilityControlFrame(hintBar) }
-    /// Width of the tier currently loaded — the shown one, or the smallest
-    /// tried when hidden.
-    var smokeHintBarFittingWidth: CGFloat { hintBar.fittingSize.width }
     var smokeTrashBackChip: ScopeChipButton { trashViewController.smokeBackChip }
     var smokeTrashRowHeight: CGFloat? { trashViewController.smokeRowHeight }
-
-    /// Whether a click in the middle of the hint bar would land on it.
-    var smokeHintBarTakesMouse: Bool {
-        guard let frame = smokeHintBarFrame else { return false }
-        let hit = utilityBar.hitTest(NSPoint(x: frame.midX, y: frame.midY))
-        return hit?.isDescendant(of: hintBar) ?? false
-    }
 
     // MARK: Pixel alignment (window coordinates)
 
@@ -179,6 +165,14 @@ extension MainViewController {
 
     func smokeResolveConflictMenuTitles(forRecordID id: String) -> [String]? {
         smokeResolveConflictMenu(forRecordID: id)?.items.map(\.title)
+    }
+
+    /// Picks a top-level context-menu item by title on the row's menu.
+    func smokePerformContextMenuItem(_ title: String, forRecordID id: String) -> Bool {
+        guard let row = tableRow(forRecordID: id),
+              let item = contextMenu(forRow: row)?.items.first(where: { $0.title == title }),
+              let action = item.action else { return false }
+        return NSApp.sendAction(action, to: item.target, from: item)
     }
 
     /// Same path as picking the item: the menu the row's right-click builds,
@@ -232,6 +226,39 @@ extension MainViewController {
         smokeFirstGroupHeaderCell()?.smokeDisclosureMinX(in: mainSurface)
     }
 
+    /// Frames (window coordinates) of everything on the two optical rails
+    /// (ui.md §3), for the smoke's ink measurement.
+    /// The three utility icon buttons (window coordinates).
+    var smokeUtilityIconFramesInWindow: [(label: String, frame: NSRect)] {
+        [("eye", resolvedChip), ("sort", sortChip), ("trash", trashButton)].map {
+            (label: $0.0, frame: $0.1.convert($0.1.bounds, to: nil))
+        }
+    }
+
+    struct SmokeRailFrames {
+        let allChip: NSRect
+        let allTitle: NSRect
+        let plusChip: NSRect
+        let priority: NSRect
+        let time: NSRect
+        let chevron: NSRect
+    }
+
+    func smokeRailFrames() -> SmokeRailFrames? {
+        guard let all = scopeBar.smokeAllChipAndTitleFrames(in: nil),
+              let record = smokeFirstRecordCell(),
+              let header = smokeFirstGroupHeaderCell() else { return nil }
+        view.layoutSubtreeIfNeeded()
+        return SmokeRailFrames(
+            allChip: all.chip,
+            allTitle: all.title,
+            plusChip: scopeBar.smokeAddButtonFrame(in: nil),
+            priority: record.smokePriorityFrame(in: nil),
+            time: record.smokeTimeFrame(in: nil),
+            chevron: header.smokeDisclosureFrame(in: nil)
+        )
+    }
+
     private func smokeFirstRecordCell() -> RecordCellView? {
         for row in 0..<tableView.numberOfRows {
             guard case .record = rows[row] else { continue }
@@ -243,6 +270,37 @@ extension MainViewController {
         return nil
     }
 
+    /// Window-space origin of a record's Content text and the caret while
+    /// that record is being edited (double-click probe).
+    func smokeContentTextOrigin(forRecordID id: String) -> NSPoint? {
+        guard let row = tableRow(forRecordID: id) else { return nil }
+        tableView.scrollRowToVisible(row)
+        guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? RecordCellView else { return nil }
+        tableView.layoutSubtreeIfNeeded()
+        return cell.smokeContentTextOrigin()
+    }
+
+    /// What `tableDoubleClicked` does for a double-click at `windowPoint`,
+    /// minus AppKit's click counting (synthetic double-clicks through
+    /// NSTableView's tracking loop are timing-dependent).
+    func smokeDoubleClick(at windowPoint: NSPoint) {
+        let local = tableView.convert(windowPoint, from: nil)
+        let row = tableView.row(at: local)
+        guard row >= 0 else { return }
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        beginInlineEdit(atRow: row, caretNear: windowPoint)
+    }
+
+    var smokeDoubleActionWired: Bool {
+        tableView.doubleAction == #selector(tableDoubleClicked(_:)) && tableView.target === self
+    }
+
+    func smokeCaretLocation(forRecordID id: String) -> Int? {
+        guard let row = tableRow(forRecordID: id), editingRowIndex == row,
+              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? RecordCellView else { return nil }
+        return cell.smokeCaretLocation
+    }
+
     var smokeFirstRecordPriorityMinX: CGFloat? {
         smokeFirstRecordCell()?.smokePriorityMinX(in: mainSurface)
     }
@@ -252,10 +310,6 @@ extension MainViewController {
         return mainSurface.bounds.width - cell.smokeTimeMaxX(in: mainSurface)
     }
 
-    var smokeFirstGroupDisclosureTrailingGap: CGFloat? {
-        guard let cell = smokeFirstGroupHeaderCell() else { return nil }
-        return mainSurface.bounds.width - cell.smokeDisclosureMaxX(in: mainSurface)
-    }
 
     var smokeHasInboxGroupHeader: Bool {
         rows.contains { $0.groupID == .inbox }

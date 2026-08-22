@@ -18,6 +18,15 @@ final class ScopeChipButton: NSButton {
     var onDropRecords: (([String]) -> Void)?
     /// "+" uses a square capsule so it reads as an icon button.
     var prefersSquare = false
+    /// Symbol-only `chipHeight` × `chipHeight` button (utility bar): the
+    /// glyph is centred, no title.
+    var iconOnly = false {
+        didSet {
+            guard iconOnly != oldValue else { return }
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+        }
+    }
     var style: Theme.Chip.Style = .capsule {
         didSet {
             guard style != oldValue else { return }
@@ -71,23 +80,28 @@ final class ScopeChipButton: NSButton {
         }
     }
 
-    private static var symbolSlot: NSSize { Theme.Size.symbolSlot }
-
-    /// Tinted glyphs keyed by symbol | enabled state | appearance name: the
-    /// tint is baked under the appearance current at draw time, so a new
-    /// appearance is a new key rather than a stale image. Bounded by a
-    /// handful of symbols x 2 states x 2-3 appearances — no eviction needed.
+    /// Symbol drawn at the chip font's point size, ink baked, **natural
+    /// size with its `alignmentRect` intact** — never scaled into a slot:
+    /// SF Symbols share one alignment band per point size (8.5pt at 12),
+    /// so centring that band is what keeps eye / clock / trash the same
+    /// visual size and on one line. Keyed by symbol | ink |
+    /// appearance; bounded by a handful of symbols × 3 inks × 2-3
+    /// appearances — no eviction needed.
     private static var tintedSymbols: [String: NSImage] = [:]
 
     private static func tintedSymbol(_ name: String, ink: NSColor, inkKey: String, in appearance: NSAppearance) -> NSImage? {
         let key = "\(name)|\(inkKey)|\(appearance.name.rawValue)"
         if let cached = tintedSymbols[key] { return cached }
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)) else { return nil }
-        let tinted = symbol.tinted(ink, centeredIn: symbolSlot)
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: Theme.Typography.chip.pointSize, weight: .medium)) else { return nil }
+        let tinted = symbol.tinted(ink)
         tintedSymbols[key] = tinted
         return tinted
     }
+
+    /// The symbol as currently tinted; the cell draws it directly for
+    /// symbol-only chips.
+    fileprivate private(set) var currentSymbol: NSImage?
 
     convenience init(title: String) {
         self.init(title: title, target: nil, action: nil)
@@ -109,8 +123,12 @@ final class ScopeChipButton: NSButton {
     }
 
     func smokeTitleMinX(in view: NSView?) -> CGFloat {
+        smokeTitleFrame(in: view).minX
+    }
+
+    func smokeTitleFrame(in view: NSView?) -> NSRect {
         let rect = (cell as? NSButtonCell)?.titleRect(forBounds: bounds) ?? bounds
-        return convert(rect, to: view).minX
+        return convert(rect, to: view)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -194,6 +212,15 @@ final class ScopeChipButton: NSButton {
     }
 
     override var intrinsicContentSize: NSSize {
+        if iconOnly {
+            return NSSize(width: Theme.Size.chipHeight, height: Theme.Size.chipHeight)
+        }
+        if baseTitle.isEmpty, currentSymbol != nil {
+            // Symbol-only capsule ("+"): a fixed glyph cell, so the chip's
+            // width — and everything aligned to its centre — never depends
+            // on which glyph is in it.
+            return NSSize(width: Theme.Size.symbolCellWidth + Theme.Size.chipTitlePadding, height: Theme.Size.chipHeight)
+        }
         let width = ceil(attributedTitle.size().width)
         var total = width + Theme.Size.chipTitlePadding
         if prefersSquare {
@@ -221,24 +248,30 @@ final class ScopeChipButton: NSButton {
         case (true, .plain): (Theme.Ink.secondary, "secondary")
         case (true, _): (Theme.Ink.primary, "primary")
         }
-        let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: Theme.Typography.chip]
+        let font = Theme.Typography.chip
+        let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: font]
+        currentSymbol = symbolName.flatMap { Self.tintedSymbol($0, ink: color, inkKey: inkKey, in: effectiveAppearance) }
         let composed = NSMutableAttributedString()
-        if let symbolName,
-           let symbol = Self.tintedSymbol(symbolName, ink: color, inkKey: inkKey, in: effectiveAppearance) {
-            // Inline attachment keeps the glyph on the title's text rail
-            // instead of NSButton's separate image slot.
+        if let symbol = currentSymbol, !baseTitle.isEmpty {
+            // Inline attachment keeps the glyph on the title's text rail.
+            // Its alignment band is centred on the cap height, which is
+            // how SF Symbols are designed to sit next to text.
             let attachment = NSTextAttachment()
-            let size = Self.symbolSlot
             attachment.image = symbol
-            attachment.bounds = NSRect(x: 0, y: (Theme.Typography.chip.capHeight - size.height) / 2, width: size.width, height: size.height)
+            let band = symbol.alignmentRect
+            attachment.bounds = NSRect(
+                x: 0, y: font.capHeight / 2 - band.midY,
+                width: symbol.size.width, height: symbol.size.height
+            )
             composed.append(NSAttributedString(attachment: attachment))
-            if !baseTitle.isEmpty {
-                composed.append(NSAttributedString(string: " ", attributes: attributes))
-            }
+            composed.append(NSAttributedString(string: " ", attributes: attributes))
         }
+        // Symbol-only chips keep an empty title: the cell draws the glyph
+        // itself, centred on device pixels (see `ScopeChipButtonCell`).
         composed.append(NSAttributedString(string: baseTitle, attributes: attributes))
         attributedTitle = composed
         invalidateIntrinsicContentSize()
+        needsDisplay = true
         alphaValue = isEnabled ? 1 : 0.45
         if let layer {
             Theme.Chip.paint(layer, style: style, selected: highlighted, in: effectiveAppearance)
@@ -262,13 +295,23 @@ final class ScopeChipButton: NSButton {
 }
 
 /// Left-aligned title so "All" shares a text rail with list Priority /
-/// project names. "+" stays centered in its square chip.
+/// project names; text is centred on its cap height, on device pixels.
+/// Symbol-only chips ("+", icon buttons) draw the glyph here with its
+/// alignment band centred in the chip — not through the attributed
+/// title, whose line metrics put glyphs ~1pt low (measured).
 private final class ScopeChipButtonCell: NSButtonCell {
+    private func pixelRound(_ v: CGFloat, in view: NSView?) -> CGFloat {
+        let scale = view?.window?.backingScaleFactor ?? 2
+        return (v * scale).rounded() / scale
+    }
+
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         let size = attributedTitle.size()
         let pad = Theme.Size.chipTitlePadding / 2
-        let y = ((rect.height - size.height) / 2).rounded(.toNearestOrAwayFromZero)
-        if (controlView as? ScopeChipButton)?.prefersSquare == true {
+        let font = Theme.Typography.chip
+        // Cap centre on the chip's centre line (flipped coordinates).
+        let y = pixelRound(rect.midY - font.ascender + font.capHeight / 2, in: controlView)
+        if let chip = controlView as? ScopeChipButton, chip.prefersSquare || chip.iconOnly {
             let x = ((rect.width - size.width) / 2).rounded(.toNearestOrAwayFromZero)
             return NSRect(x: x, y: y, width: size.width, height: size.height)
         }
@@ -279,22 +322,37 @@ private final class ScopeChipButtonCell: NSButtonCell {
             height: size.height
         )
     }
+
+    /// NSButtonCell skips `drawTitle` for an empty title, so symbol-only
+    /// chips draw their glyph here, after the (empty) interior.
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        super.drawInterior(withFrame: cellFrame, in: controlView)
+        guard let chip = controlView as? ScopeChipButton, chip.chipTitle.isEmpty, let symbol = chip.currentSymbol else { return }
+        let bounds = controlView.bounds
+        let band = symbol.alignmentRect
+        // Flipped view: the image's bottom is at the rect's maxY; the band
+        // is measured from the image's bottom.
+        let origin = NSPoint(
+            x: pixelRound(bounds.midX - band.midX, in: controlView),
+            y: pixelRound(bounds.midY + band.midY - symbol.size.height, in: controlView)
+        )
+        let rect = NSRect(origin: origin, size: symbol.size)
+        symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
 }
 
-extension NSImage {
-    /// Bakes `color` into the glyph, centred in `slot` (scaled down if
-    /// larger). Shared by chips and key caps; re-bake on appearance change.
-    func tinted(_ color: NSColor, centeredIn slot: NSSize) -> NSImage {
-        let glyph = size
-        let result = NSImage(size: slot, flipped: false) { rect in
-            let scale = min(1, slot.width / max(glyph.width, 1), slot.height / max(glyph.height, 1))
-            let drawn = NSSize(width: glyph.width * scale, height: glyph.height * scale)
-            let origin = NSPoint(x: ((rect.width - drawn.width) / 2).rounded(), y: ((rect.height - drawn.height) / 2).rounded())
-            self.draw(in: NSRect(origin: origin, size: drawn))
+private extension NSImage {
+    /// Bakes `color` into the glyph at natural size, keeping the symbol's
+    /// `alignmentRect` so callers can centre its band. Re-bake on
+    /// appearance change.
+    func tinted(_ color: NSColor) -> NSImage {
+        let result = NSImage(size: size, flipped: false) { rect in
+            self.draw(in: rect)
             color.set()
             rect.fill(using: .sourceAtop)
             return true
         }
+        result.alignmentRect = alignmentRect
         result.isTemplate = false
         return result
     }

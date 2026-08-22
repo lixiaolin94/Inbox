@@ -117,7 +117,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         contentCenterY = contentField.centerYAnchor.constraint(equalTo: centerYAnchor)
         minHeightConstraint = heightAnchor.constraint(greaterThanOrEqualToConstant: Preferences.recordRowMinHeight)
         timeWidthConstraint = timeLabel.widthAnchor.constraint(equalToConstant: Self.timeColumnWidth(fontSize: fontSize))
-        timeTrailingConstraint = timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.contentInset)
+        timeTrailingConstraint = timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.timeRail)
 
         NSLayoutConstraint.activate([
             minHeightConstraint,
@@ -142,7 +142,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         super.layout()
         pinToWindowRail()
         // Wrapping NSTextField needs a max layout width to report a
-        // multi-line intrinsic height for automatic row heights.
+        // multi-line intrinsic height (the cell's fitting height).
         let wrapWidth = contentField.bounds.width
         if wrapWidth > 0, contentField.preferredMaxLayoutWidth != wrapWidth {
             contentField.preferredMaxLayoutWidth = wrapWidth
@@ -161,7 +161,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         if abs(priorityLeadingConstraint.constant - leading) > 0.5 {
             priorityLeadingConstraint.constant = leading
         }
-        let trailing = Theme.Size.trailingConstant(for: self)
+        let trailing = Theme.Size.trailingConstant(for: self, inset: Theme.Size.timeRail)
         if abs(timeTrailingConstraint.constant - trailing) > 0.5 {
             timeTrailingConstraint.constant = trailing
         }
@@ -286,7 +286,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     static func contentFieldWidth(tableWidth: CGFloat, style: RecordCellStyle = .regular) -> CGFloat {
         let fontSize = Preferences.recordFontSize
         let leading = Theme.Size.textRail + (style == .trash ? 0 : priorityColumnWidth(fontSize: fontSize) + 8)
-        let trailing = 10 + timeColumnWidth(fontSize: fontSize) + Theme.Size.contentInset
+        let trailing = 10 + timeColumnWidth(fontSize: fontSize) + Theme.Size.timeRail
         return max(1, tableWidth - leading - trailing)
     }
 
@@ -357,9 +357,12 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     /// height plus pads); the owner returns it from `heightOfRow`.
     var editingHeight: CGFloat { fittingSize.height }
 
+    /// Widest plausible date in the current locale's own format — the
+    /// template decides the pattern, so measure its output, not a literal.
     private static func timeColumnWidth(fontSize: CGFloat) -> CGFloat {
         let font = NSFont.systemFont(ofSize: fontSize)
-        return ceil(("Sep 99, 9999" as NSString).size(withAttributes: [.font: font]).width)
+        let sample = otherYearFormatter.string(from: Date(timeIntervalSince1970: 1_884_470_400)) // 2029-09-19
+        return ceil((sample as NSString).size(withAttributes: [.font: font]).width)
     }
 
     /// Trash keeps a fixed single-line row and truncates; wrapping there
@@ -393,10 +396,11 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
     // MARK: - Inline Edit (PRD §8.5)
 
-    /// Switches Content into an editable field with the caret at the end,
-    /// and makes it first responder. Caller is responsible for the row
-    /// already being scrolled into view.
-    func beginEditing() {
+    /// Switches Content into an editable field and makes it first
+    /// responder. The caret goes to the end, or — for a double-click — to
+    /// the insertion point nearest `caretNear` (window coordinates). Caller
+    /// is responsible for the row already being scrolled into view.
+    func beginEditing(caretNear windowPoint: NSPoint? = nil) {
         didReportExplicitEditEnd = false
         applyWrapping(for: .regular)
         // Drop strikethrough / dimming so the field editor shows plain text.
@@ -416,8 +420,26 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         if let editor = contentField.currentEditor() as? NSTextView {
             configureFieldEditor(editor, font: font)
             let end = editor.string.utf16.count
-            editor.selectedRange = NSRange(location: end, length: 0)
+            var caret = end
+            if let windowPoint {
+                let local = editor.convert(windowPoint, from: nil)
+                caret = min(max(0, editor.characterIndexForInsertion(at: local)), end)
+            }
+            editor.selectedRange = NSRange(location: caret, length: 0)
         }
+    }
+
+    /// Caret position (UTF-16 offset) while editing, for the UI smoke.
+    var smokeCaretLocation: Int? {
+        (contentField.currentEditor() as? NSTextView)?.selectedRange.location
+    }
+
+    /// Window-space origin of the Content text's first line (the field's
+    /// leading edge plus NSTextFieldCell's 2pt inset, at mid line height).
+    func smokeContentTextOrigin() -> NSPoint {
+        let frame = contentField.convert(contentField.bounds, to: nil)
+        let lineHeight = contentField.font.map { ceil($0.ascender - $0.descender + $0.leading) } ?? 16
+        return NSPoint(x: frame.minX + 2, y: frame.maxY - lineHeight / 2)
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
@@ -480,7 +502,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
     /// Live text lives in the field editor; the cell measures it (see
     /// `WrappingTextFieldCell.cellSize`) so the field — and with it the
-    /// automatic row height — grows and shrinks with the wrapped lines.
+    /// editing row height — grows and shrinks with the wrapped lines.
     func controlTextDidChange(_ obj: Notification) {
         contentField.invalidateIntrinsicContentSize()
         onEditingHeightChanged?()
@@ -503,22 +525,28 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     // Shared across every cell configure; DateFormatter is not thread-safe,
     // but these are only touched from the main thread.
     private static let calendar = Calendar.autoupdatingCurrent
+    // Dates follow the UI language, not the system region: the app ships
+    // English only, and a Chinese-region user otherwise saw "8月 22" next
+    // to English chrome (and the smoke measured a different glyph on the
+    // right rail than the bundled app shows). Templates, not fixed
+    // patterns, so a future localisation gets its own order/separators.
+    private static let dateLocale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
     private static let sameYearFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.dateFormat = "MMM d"
+        formatter.locale = dateLocale
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()
     private static let otherYearFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.dateFormat = "MMM d, yyyy"
+        formatter.locale = dateLocale
+        formatter.setLocalizedDateFormatFromTemplate("yMMMd")
         return formatter
     }()
 
     /// Created-at as a plain date: `MMM d`, or `MMM d, yyyy` when the year
     /// differs from `now`. No Today/Yesterday — a date reads the same every
-    /// day and does not go stale overnight (R18).
+    /// day and does not go stale overnight.
     static func relativeTimeString(fromMillis milliseconds: Int64, now: Date = Date()) -> String {
         let date = Date(timeIntervalSince1970: Double(milliseconds) / 1000)
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
@@ -547,6 +575,9 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     func smokeTimeMaxX(in view: NSView?) -> CGFloat {
         timeLabel.convert(timeLabel.bounds, to: view).maxX
     }
+
+    func smokePriorityFrame(in view: NSView?) -> NSRect { priorityLabel.convert(priorityLabel.bounds, to: view) }
+    func smokeTimeFrame(in view: NSView?) -> NSRect { timeLabel.convert(timeLabel.bounds, to: view) }
 
     var smokeShowsConflictBadge: Bool {
         timeLabel.stringValue == Self.conflictBadgeText && !timeLabel.isHidden
@@ -605,7 +636,7 @@ private final class WrappingContentField: NSTextField {
 
     /// While editing, stock NSTextField reports a single line height. Ask
     /// the field editor's layout for the wrapped height instead so the
-    /// automatic row height follows the text as it is typed.
+    /// editing row height follows the text as it is typed.
     override var intrinsicContentSize: NSSize {
         guard let editor = currentEditor() as? NSTextView,
               let container = editor.textContainer,

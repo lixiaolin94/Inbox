@@ -6,16 +6,21 @@ import ServiceManagement
 final class SettingsWindowController: NSWindowController {
     convenience init() {
         let controller = SettingsViewController()
+        // The system title sits beside the traffic lights on this OS; the
+        // window draws its own, centred in the titlebar zone (same as the
+        // Trash surface), with the titlebar kept as chrome.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 200),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 228),
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.title = "Settings"
+        window.title = "Inbox Settings"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.contentViewController = controller
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 420, height: 200))
+        window.setContentSize(NSSize(width: 420, height: 228))
         self.init(window: window)
     }
 }
@@ -33,7 +38,7 @@ final class SettingsViewController: NSViewController {
     }()
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 200))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 228))
     }
 
     override func viewDidLoad() {
@@ -84,8 +89,24 @@ final class SettingsViewController: NSViewController {
             view.addSubview(subview)
         }
 
+        let windowTitle = WindowTitleLabel(labelWithString: "Inbox Settings")
+        windowTitle.font = Theme.Typography.windowTitle
+        windowTitle.textColor = .labelColor
+        windowTitle.refusesFirstResponder = true
+        windowTitle.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(windowTitle)
+        let titleZone = NSLayoutGuide()
+        view.addLayoutGuide(titleZone)
+
         NSLayoutConstraint.activate([
-            generalTitle.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            titleZone.topAnchor.constraint(equalTo: view.topAnchor),
+            titleZone.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            titleZone.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            titleZone.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            windowTitle.centerXAnchor.constraint(equalTo: titleZone.centerXAnchor),
+            windowTitle.centerYAnchor.constraint(equalTo: titleZone.centerYAnchor),
+
+            generalTitle.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             generalTitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 
             launchAtLoginCheckbox.topAnchor.constraint(equalTo: generalTitle.bottomAnchor, constant: 12),

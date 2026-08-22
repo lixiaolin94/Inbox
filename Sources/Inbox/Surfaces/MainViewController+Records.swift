@@ -180,7 +180,17 @@ extension MainViewController {
 
     // MARK: - Row Focus: Inline Edit (PRD §8.5)
 
-    func beginInlineEdit(atRow row: Int) {
+    /// Double-click on a row: Inline Edit with the caret at the click
+    /// (PRD §8.5, extended by the user). Single clicks keep selecting
+    /// as before; `doubleAction` fires after the click has made the row the
+    /// selection.
+    @objc func tableDoubleClicked(_ sender: Any?) {
+        let row = tableView.clickedRow
+        guard row >= 0, record(atTableRow: row) != nil else { return }
+        beginInlineEdit(atRow: row, caretNear: NSApp.currentEvent?.locationInWindow)
+    }
+
+    func beginInlineEdit(atRow row: Int, caretNear windowPoint: NSPoint? = nil) {
         guard editingRowIndex == nil, let focused = record(atTableRow: row), view.window != nil else { return }
 
         // Nothing else in this Slice can trigger a search while a row is
@@ -212,7 +222,7 @@ extension MainViewController {
                 self.tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
             }
         }
-        cell.beginEditing()
+        cell.beginEditing(caretNear: windowPoint)
     }
 
     private func handleInlineEditEnded(
@@ -296,6 +306,19 @@ extension MainViewController {
                 resolveItem.submenu = makeResolveConflictMenu(recordID: record.id)
                 menu.addItem(resolveItem)
             }
+            // Same rule as Space: any Open target → resolve them all; all
+            // Resolved → reopen. Undo covers it like the key does.
+            let anyOpen = targets.contains { $0.status == RecordStatus.open.rawValue }
+            let statusTitle: String
+            if targets.count == 1 {
+                statusTitle = anyOpen ? "Mark as Resolved" : "Reopen"
+            } else {
+                statusTitle = anyOpen ? "Mark \(targets.count) as Resolved" : "Reopen \(targets.count) Records"
+            }
+            let statusItem = NSMenuItem(title: statusTitle, action: #selector(toggleResolveFromMenu(_:)), keyEquivalent: "")
+            statusItem.target = self
+            statusItem.representedObject = targets.map(\.id)
+            menu.addItem(statusItem)
             let moveItem = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
             moveItem.submenu = makeMoveDestinationMenu(for: targets)
             menu.addItem(moveItem)
@@ -463,6 +486,16 @@ extension MainViewController {
         let ids = records(atTableRows: rowIndexes).map(\.id)
         guard !ids.isEmpty else { return }
         moveRecordsToTrash(ids: ids)
+    }
+
+    @objc private func toggleResolveFromMenu(_ sender: NSMenuItem) {
+        guard let ids = sender.representedObject as? [String] else { return }
+        let rows = IndexSet(ids.compactMap { tableRow(forRecordID: $0) })
+        guard !rows.isEmpty else { return }
+        // Menu targets are a selection already (or become one), so the
+        // focus inheritance after resolving follows the keyboard path.
+        tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        toggleResolve(atRows: rows)
     }
 
     @objc private func moveToTrashFromMenu(_ sender: NSMenuItem) {
