@@ -17,9 +17,12 @@
 | fix 窗口坍缩 | 修复主窗口 fitting-size 坍缩到 28pt + ui-smoke 几何断言 | Grok 4.6 | `b31233e` |
 | feat 多选与拷贝 | 列表多选（⇧↑↓/⌘A/⇧⌘点击）+ 批量 ⌫/Space/←→/Move、批量删除单步 Undo、⌘C 拷贝内容、All View 拖拽行改 Project | Fable | `30f1cbb` |
 | feat R2 沉浸与多行 | 无标题沉浸窗口、iCloud Sync 菜单开关 + 账号不可用离线标签、列表多行换行（Priority/时间与首行基线对齐）、输入框超长单行尾部聚焦、拖 Record 到 Scope Bar chip | 流水线：Fable 协调/验收，Grok 4.6 执行，GPT-5.6-sol 审查 | `f780dcf` |
-| feat R3 玻璃视觉与 Settings | 全窗 sidebar 材质 + fullSizeContentView、玻璃胶囊 Universal Input/Scope chip、透明行背景与行距、Record 字号偏好即时生效、Settings 窗口（⌘,：字号/Launch at Login/iCloud Sync，替代 App 菜单开关）、Titlebar 系统填充隐藏（Tahoe workaround） | 用户直连迭代（护栏文件），Fable 验收合并 | （提交时补） |
+| feat R3 玻璃视觉与 Settings | 全窗 sidebar 材质 + fullSizeContentView、玻璃胶囊 Universal Input/Scope chip、透明行背景与行距、Record 字号偏好即时生效、Settings 窗口（⌘,：字号/Launch at Login/iCloud Sync，替代 App 菜单开关）、Titlebar 系统填充隐藏（Tahoe workaround） | 用户直连迭代（护栏文件），Fable 验收合并 | `633ea09` |
+| feat R4 UI chrome 对齐 | 描边 chip 与 symbol 切换（Resolved 眼睛 / `+` 圆形）、排序 chip 与 Resolved 同侧、菜单栏实心图标左键开窗右键菜单、多行自适应 Inline Edit、Scope Bar 仅横向滚动 + 尾部渐隐 + `+` 固定右缘、行选中上下对称、Trash 行正常色且无默认分组、去掉 Resolved 标题行、Record 字号跟随系统 body | 用户直连迭代，Fable 执行/验收合并 | `020e007` |
+| perf R6 启动与体积 | 同步引擎/状态栏项推迟到首帧后、诊断运行器 `#if DEBUG`、Release 仅 arm64 + `-Osize`、chip symbol 缓存与 chip 复用、cell 文本测量缓存、DateFormatter 复用、SQLite WAL + synchronous=NORMAL、折叠集每次重建只读一次 | 流水线：4 个执行者并行（各自 worktree），Fable 审阅/集成/四道门 | 待合并 |
+| refactor 基础瘦身 | 删死代码（Resolved 标题行类型与 cell）、`Dialogs` 收口四个弹窗、`RecordStore.batch` 收口扇出、`Preferences` 收口四个持久键、`MainViewController` 拆为核心 + `+Records` + `+Projects` + `+Smoke`（1574 → 658 行）、Project 列表刷新合并为一条路径、源文件按层分目录（App/Surfaces/Views/Model/Storage/Sync/Diagnostics）；新增 docs/ARCHITECTURE.md，SPEC v0.2（角色泛化、代码组织、平台组件优先），CLAUDE/README 刷新 | Fable 执行，用户验收 | `32ad30a` |
 
-角色分工：Fable 协调/审阅/合并（不写码），Grok 4.6 xhigh 主力编码（S3b 起），Sonnet 早期编码与文档。每个合并点都经过协调者独立 build/test/冒烟。
+角色分工（首个周期）：Fable 协调/审阅/合并，Grok 4.6 xhigh 主力编码（S3b 起），Sonnet 早期编码与文档；R3 起用户直连迭代、Fable 执行与验收。每个合并点都经过独立 build/test/冒烟。现行角色定义见 SPEC §1。
 
 ## 关键技术决策（为什么是现在这样）
 
@@ -29,7 +32,10 @@
 4. **Undo 只覆盖 Move to Trash**：窗口级 UndoManager 由 AppDelegate 路由（文本编辑时 field editor 的栈优先）。undo/redo handler 在回调开头同步注册反向动作——store 写入是异步的，不能在 completion 里注册（会开新 undo 组）。
 5. **同步元数据信封含"共同祖先"**：`ck_system_fields` 存 system fields + 上次同步的字段快照。没有祖先值无法区分"两端改了不同字段"（自动合并）与"同字段冲突"（无损处理）。冲突规则表见 ConflictMerger.swift 与 docs/SCHEMA.md。
 6. **窗口坍缩事故（重要教训）**：顶层 surface 四边用 Auto Layout 钉在 content view 上会让 NSWindow 持续吸附 fitting size——约束链没人提供宽度时窗口坍缩到 28pt，`setContentSize` 会被弹回，`preferredContentSize` 又会把尺寸钉死。现方案：顶层 autoresizing + 挂载后 setContentSize + `constrainFrameRect` 套 minSize。**UI 几何类改动必须在 UISmokeRunner 加断言。**
-7. **xcodeproj 入库**：为了 clone 即开。project.yml 是唯一权威，改配置必须走它（含 Xcode 界面里点的签名设置——点完要回填）。
+7. **xcodeproj 入库**：为了 clone 即开。project.yml 是唯一权威，改配置必须走它（含 Xcode 界面里点的签名设置——点完要回填）。源文件按目录收录，但生成的 pbxproj 逐文件列出，所以增删 Swift 文件也要重新生成。
+8. **留在 AppKit，不迁 SwiftUI/GPUI**（2026-08-22 复核）：键盘语义与启动体积是产品核心，AppKit 是唯一能同时满足的选择；理由与对比见 ARCHITECTURE §7。打磨方向是减少自绘、多用平台组件（ARCHITECTURE §8 候选清单）。
+10. **性能审计方法（2026-08-22，留作后续对比）**：启动用"spawn → 首个 layer-0 窗口出现"计时（轮询 `CGWindowListCopyWindowInfo`，脚本 ~40 行，不入库），对照一个 56 KB 的最小 AppKit 窗口程序作平台底价；体积看 `strip -x` 后的单架构二进制；内存看启动 2 s 后的 RSS；剖析用 xctrace Time Profiler，**注意 xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包——要复制 Release 包改 CFBundleIdentifier 并 ad-hoc 重签后再录**。决策记录：最低版本保持 macOS 14、整窗 behind-window 模糊保留（产品选择）、只发 arm64。
+9. **控制器按关注点拆 extension 文件而不是抽新层**：`MainViewController` 1574 行拆为核心 + `+Records` + `+Projects` + `+Smoke`，共享成员模块内可见。没有引入 Coordinator/Presenter——同一个 `self`，零间接层，拆分只为导航与审阅范围。弹窗进 `Dialogs`、键进 `Preferences`、扇出进 `RecordStore.batch`，三个"重新加载 Project 列表"变体合并为 `reloadProjectsAndSearch`。
 
 ## 遗留事项清单
 
@@ -44,11 +50,31 @@
 - [ ] Inline Edit 提交遇 DB 写入失败时编辑文本随弹窗丢弃（应保留编辑态让用户重试/复制）。
 - [ ] ScopeChipButton 选中态用 CGColor 快照，系统深浅色热切换时不会自动跟随（chip 重建频繁，影响小）。
 - [ ] Trash 分组组头画了 ▼ 但不可折叠（PRD 对 Trash 无折叠要求，视觉上有误导）。
-- [ ] Utility 栏在 480pt 最小宽度下略挤（checkbox + Sort 弹出框 + Trash），无溢出处理。
+- [ ] Utility 栏在 480pt 最小宽度下略挤（Resolved / Sort chip + 离线标签 + Trash），离线标签会被压缩但无溢出处理。
 - [ ] 已删除 Project 的折叠状态键残留在 UserDefaults（无害未清理）。
 - [ ] All View 拖拽改 Project（含拖到 Scope Bar chip）无自动化覆盖（ui-smoke 不合成鼠标拖拽事件），依赖人工冒烟；drop 目标解析的纯逻辑已有单测（ListRowIndex.dropTargetGroup）。
 - [ ] iCloud 离线标签只在启动时一次性检测 accountStatus——会话中途登录/登出 iCloud 不刷新；iCloud Sync 开关改动需重启生效（CKSyncEngine 无 stop API，属既定简化）。
 - [ ] 开发环境 CloudKit 容器里有一条探针记录 `manual-probe-1787274876-786` 前缀类似的测试数据，同步到真实库后可在 App 内 ⌫ 删除。
+
+### 性能基线（Release，Apple Silicon，2026-08-22；方法见决策 10）
+
+| 指标 | 最小 AppKit 窗口 | R5（优化前） | R6（优化后） |
+|---|---|---|---|
+| spawn → 出窗 中位数 | 180–186 ms | 294 ms（.app）/ 258 ms（裸） | **278 ms（.app）/ 245 ms（裸）** |
+| RSS（启动 2 s 后） | 78 MB | 92 MB | 91 MB |
+| 发布二进制（strip 后） | — | 2.4 MB universal 未 strip；单架构 754 KB | **569 KB**（arm64，`-Osize`，无诊断代码） |
+| 单条写事务 | — | 0.33 ms（rollback journal） | 0.05 ms（WAL） |
+
+剩余超出底价的 ~65–100 ms 去向（Release 剖析）：`NSWindow` 创建 26 ms（macOS 26 标题栏材质，基准程序同样要付）、`MainViewController` 构建 23 ms（其中 5 个 `ScopeChipButton` 11 ms ≈ 2 ms/个）、首次布局绘制与 `focusInputAtEnd` 的 field editor 实例化 ~10 ms、主菜单/状态栏等杂项。下一步最大的单项就是 chip 换平台按钮。
+
+### UI 打磨候选（平台组件优先，按风险从低到高；详见 ARCHITECTURE §8）
+
+- [ ] Utility 栏与 Trash 动作栏的四个 `ScopeChipButton` 换成 `NSButton`（`.accessoryBarAction` 或 26+ 玻璃样式）。
+- [ ] `RecordTableView` 硬编码 keyCode 改 `charactersIgnoringModifiers`（顺手修非美式布局 `M` 键）。
+- [ ] `ClearTableRowView` 的居中修正与 `TitlebarBackdrop` workaround 在新 SDK 上复审是否仍需要。
+- [ ] All View 分组折叠评估 `NSOutlineView` / group rows 替代 `GroupHeaderCellView` + 手工折叠状态（最大一块自绘，需单独分支验证键盘语义）。
+- [ ] Scope chip 最后评估（选中不改宽度 + `refusesFirstResponder` 是平台按钮难以满足的两点）。
+- [ ] 替换前先量一次激活时延与二进制体积作为基线（PRD §17.1，ARCHITECTURE §10）。
 
 ### 产品待定（需要用户拍板，不要擅自改）
 

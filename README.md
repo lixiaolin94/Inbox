@@ -2,9 +2,9 @@
 
 > **Inbox 是一个刻意保持小而专注的个人开发 Record 工具：通用启动器负责把用户带进来，进入之后它以 Input 为第一入口，用一套极短、稳定、可形成肌肉记忆的交互，让用户完成记录、查找、整理和解决，然后离开。**（[PRD §25](Inbox_macOS_MVP_PRD_v0.1.md)）
 
-`v0.2.0` · macOS 14+ · MVP 本地功能完成（S1–S5） · CloudKit 记录级同步已接入（S6，CKSyncEngine）
+`v0.2.x` · macOS 14+ · MVP 本地闭环完成 · CloudKit 记录级同步已接入（CKSyncEngine） · 零第三方依赖，纯 AppKit
 
-Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation、Idea 等一切「想到就要记下来」的内容，不要求创建前判断类型。详见 [`Inbox_macOS_MVP_PRD_v0.1.md`](Inbox_macOS_MVP_PRD_v0.1.md)（产品定义）与 [`SPEC.md`](SPEC.md)（工程约定）。
+Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation、Idea 等一切「想到就要记下来」的内容，不要求创建前判断类型。详见 [`Inbox_macOS_MVP_PRD_v0.1.md`](Inbox_macOS_MVP_PRD_v0.1.md)（产品定义）、[`SPEC.md`](SPEC.md)（工程约定）与 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)（结构与文件职责）。
 
 ## 核心特性
 
@@ -12,9 +12,9 @@ Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation�
 - **Enter 创建**：只要焦点没有主动移到某条 Record 上，Enter 永远是"创建当前输入内容"，即使存在完全相同的内容。
 - **键盘模型**：`↑↓` 在 Input 与 Record List 间导航；`←→` 调整 Priority；`Space` Resolve / Reopen；`Enter` 进入 Inline Edit；`M` 打开 Move 菜单；`⌫` 移入 Trash；`⌘Z` 撤销删除；`⌘1…⌘0` 切换 Scope。
 - **Project Scope**：横向 Scope Bar（`All | Project… | +`），All View 按 Inbox → Project Manual Order 分组并可折叠；Scope 同时决定搜索范围和新建 Record 的归属。
-- **排序与 Show Resolved**：Newest First / Oldest First / Priority 三种全局排序；`Show Resolved` 关闭时 Resolved 立即从列表消失，开启时在独立分组显示。
+- **排序与 Show Resolved**：Newest First / Oldest First / Priority 三种全局排序（Utility 栏左侧的排序 chip）；Resolved 眼睛开关关闭时 Resolved 立即从列表消失，开启时排在各组 Open 之后（划线样式区分，无标题行）。
 - **Trash**：软删除 + `⌘Z` 撤销；独立 Secondary Surface 提供 Restore 和高成本、明确确认的 Permanent Delete。
-- **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏 / `⌘Tab` 重新激活时 Universal Input 立即获得焦点，首键不丢失；可选 Launch at Login。
+- **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏图标左键 / `⌘Tab` 重新激活时 Universal Input 立即获得焦点，首键不丢失；菜单栏图标右键出菜单；可选 Launch at Login。
 - **Local-first SQLite**：每台设备一份本地 SQLite，所有高频操作先落盘、UI 立即反馈，再异步同步；无网络时功能完整可用。
 
 ## 构建与运行
@@ -27,7 +27,7 @@ Inbox 采用双通道工程形态：`project.yml` 是唯一权威工程描述，
 open Inbox.xcodeproj
 ```
 
-选择 `Inbox` scheme 直接 Run（⌘R）。构建使用 Ad-hoc 签名，本地 Debug/Release 无需付费 Apple Developer 账号；CloudKit entitlements 要到 S6 才会引入。
+选择 `Inbox` scheme 直接 Run（⌘R）。工程带 CloudKit entitlements，使用 `project.yml` 里配置的团队自动签名；换团队时改 `project.yml` 的 `DEVELOPMENT_TEAM` 后重新生成。
 
 ### 方式二：Swift Package Manager
 
@@ -43,7 +43,7 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 .build/debug/Inbox --ui-smoke
 ```
 
-`--ui-smoke` 会在进程内通过 `NSEvent` 合成真实键盘事件，驱动完整的 Create → Search → Priority → Resolve → Delete → Undo 链路（见 [`Sources/Inbox/UISmokeRunner.swift`](Sources/Inbox/UISmokeRunner.swift)）。该模式使用临时数据库路径和独立的 `UserDefaults` suite（`com.xiaolin.Inbox.smoke`），不会触碰真实数据；完成后打印 `UI-SMOKE PASS` 并以退出码 0 结束，失败则打印 `UI-SMOKE FAIL: …` 并以非零退出码结束。注意：中文/输入法组合无法通过合成按键事件覆盖，此冒烟只验证 ASCII 路径。
+`--ui-smoke` 会在进程内通过 `NSEvent` 合成真实键盘事件，驱动完整的 Create → Search → Priority → Resolve → Inline Edit → Delete → Undo 链路，并断言窗口与 chrome 几何（见 [`Sources/Inbox/UISmokeRunner.swift`](Sources/Inbox/Diagnostics/UISmokeRunner.swift)，探针在 [`MainViewController+Smoke.swift`](Sources/Inbox/Surfaces/MainViewController+Smoke.swift)）。该模式使用临时数据库路径和独立的 `UserDefaults` suite（`com.xiaolin.Inbox.smoke`），不会触碰真实数据；完成后打印 `UI-SMOKE PASS` 并以退出码 0 结束，失败则打印 `UI-SMOKE FAIL: …` 并以非零退出码结束。注意：中文/输入法组合无法通过合成按键事件覆盖，此冒烟只验证 ASCII 路径。
 
 ## 键盘速查表
 
@@ -65,11 +65,11 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Move to Trash |
 | 全局 | `⌘1` | 切到 All |
 | 全局 | `⌘2`…`⌘0` | 按 Project Manual Order 切到对应 Project（第 1–9 个；更多需用 Scope Bar 或鼠标） |
-| 全局 | `⌘,` | 打开 Settings（Record 字号、Launch at Login、iCloud Sync） |
+| 全局 | `⌘,` | 打开 Settings（Launch at Login、iCloud Sync） |
 | 全局 | `⌘W` | 隐藏主窗口（进程继续驻留，不是关闭应用） |
 | 全局 | `⌘Q` | 退出应用 |
 
-对应实现：[`RecordTableView.swift`](Sources/Inbox/RecordTableView.swift)（Row Focus 状态机）、[`MainViewController.swift`](Sources/Inbox/MainViewController.swift)（Input 与整体路由）、[`AppDelegate.swift`](Sources/Inbox/AppDelegate.swift)（菜单与 `⌘Number`）。
+对应实现：[`RecordTableView.swift`](Sources/Inbox/Views/RecordTableView.swift)（Row Focus 状态机）、[`MainViewController.swift`](Sources/Inbox/Surfaces/MainViewController.swift)（Input 与焦点路由）、[`MainViewController+Records.swift`](Sources/Inbox/Surfaces/MainViewController+Records.swift)（每个按键对应的 Record 动作）、[`AppDelegate.swift`](Sources/Inbox/App/AppDelegate.swift)（菜单与 `⌘Number`）。
 
 ## 数据与开放性
 
@@ -85,16 +85,16 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 - 中文子串搜索，含 1–2 字短查询：约 2ms；
 - 无过滤条件的全量列出 / 按 Priority 排序（10,000 行全返回）：约 5ms。
 
-均远低于 [PRD §17.3](Inbox_macOS_MVP_PRD_v0.1.md) 规定的 50ms/10,000 行预算。搜索使用绑定参数的 `content LIKE '%term%'` 扫描而非 FTS5 MATCH，原因见 [`RecordStore.swift`](Sources/Inbox/RecordStore.swift) 顶部注释与下文 SCHEMA 文档。
+均远低于 [PRD §17.3](Inbox_macOS_MVP_PRD_v0.1.md) 规定的 50ms/10,000 行预算。搜索使用绑定参数的 `content LIKE '%term%'` 扫描而非 FTS5 MATCH，原因见 [`RecordStore.swift`](Sources/Inbox/Storage/RecordStore.swift) 顶部注释与下文 SCHEMA 文档。
 
 ## 路线图现状
 
 对照 [PRD §20](Inbox_macOS_MVP_PRD_v0.1.md)：
 
-- **Phase 0（技术验证）/ Phase 1（macOS MVP 本地闭环）**：已完成。Universal Input、Scope Bar、Record List 键盘模型、排序、Show Resolved、Trash/Undo、菜单栏驻留、Launch at Login、UI 冒烟均已合并 main（S1–S5）。
-- **CloudKit 同步（S6）**：已完成。CKSyncEngine + 私有库自定义 zone `InboxZone`，容器 `iCloud.com.xiaolin.Inbox`（当前 Development 环境）。schema v3 引入 `ck_system_fields`（system fields + 共同祖先字段快照）、`pending_change`、`tombstone`，冲突按无损原则做字段级三方合并（详见 [`docs/SCHEMA.md`](docs/SCHEMA.md)）。双库端到端验证：`--sync-probe create/expect` 配合 `--db-path` 可在单机模拟双设备。上架/分发前需将容器环境切至 Production 并部署 schema。
-- **之后**：Phase 2 打磨与开放能力（导出、诊断、Accessibility）、Phase 3 Attachment、Phase 4+ iOS。
+- **Phase 0（技术验证）/ Phase 1（macOS MVP 本地闭环）**：已完成。Universal Input、Scope Bar、Record List 键盘模型、多选、排序、Show Resolved、Inline Edit 多行、Trash/Undo、菜单栏驻留、Launch at Login、Settings、UI 冒烟均已合并 main。
+- **CloudKit 同步**：已完成。CKSyncEngine + 私有库自定义 zone `InboxZone`，容器 `iCloud.com.xiaolin.Inbox`（当前 Development 环境）。schema v3 引入 `ck_system_fields`（system fields + 共同祖先字段快照）、`pending_change`、`tombstone`，冲突按无损原则做字段级三方合并（详见 [`docs/SCHEMA.md`](docs/SCHEMA.md)）。双库端到端验证：`--sync-probe create/expect` 配合 `--db-path` 可在单机模拟双设备。上架/分发前需将容器环境切至 Production 并部署 schema。
+- **当前**：基础瘦身完成后进入 UI 打磨——优先用平台原生组件替换自绘（候选清单见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §8），再做 Phase 2 开放能力（导出、诊断、Accessibility）；Phase 3 Attachment、Phase 4+ iOS 不变。
 
 ## 工程协作说明
 
-本项目由多模型流水线开发：Fable 担任协调者，负责拆分任务、审阅代码与合并决策；Grok 4.6（xhigh reasoning effort）承担主力编码；Claude Sonnet 在需要时顶替编码或处理机械性杂务。协作规则、Slice 划分和验收标准见 [`SPEC.md`](SPEC.md)。
+本项目由用户与多个模型协作开发，协调者/执行者的角色随会话而变，不变的是 [`SPEC.md`](SPEC.md) 里的守则与合并四道门；历史阵容与每次合并记录见 [`docs/HISTORY.md`](docs/HISTORY.md)。

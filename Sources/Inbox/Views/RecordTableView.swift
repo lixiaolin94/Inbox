@@ -51,6 +51,16 @@ final class RecordTableView: NSTableView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// AppKit still insets the cell inside the row (~6pt) even with
+    /// `.fullWidth`. Stretch to the row so the 16pt rail matches All.
+    override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
+        var frame = super.frameOfCell(atColumn: column, row: row)
+        let rowFrame = rect(ofRow: row)
+        frame.origin.x = rowFrame.origin.x
+        frame.size.width = rowFrame.size.width
+        return frame
+    }
+
     /// Header cells are not NSControls, so a transparent table's hitTest
     /// lands on the table itself and stock mouseDown only tries selection
     /// (which headers cannot enter). Forward the click to the header.
@@ -252,6 +262,20 @@ final class ClearTableRowView: NSTableRowView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func drawBackground(in dirtyRect: NSRect) {}
+
+    /// AppKit insets the cell inside the row even with `.fullWidth`. Pin
+    /// cells to the table's full width so the 16pt rail matches All — but
+    /// keep AppKit's vertical placement: with automatic row heights the row
+    /// is fitting height + intercellSpacing and the cell sits centred in it.
+    /// Stretching the cell to the row height left its subviews laid out for
+    /// the shorter height, so the selection showed uneven top/bottom gaps.
+    override func layout() {
+        super.layout()
+        let width = (superview as? NSTableView)?.bounds.width ?? bounds.width
+        for view in subviews where view is NSTableCellView {
+            view.frame = NSRect(x: 0, y: view.frame.origin.y, width: width, height: view.frame.height)
+        }
+    }
 
     static func dequeue(in tableView: NSTableView) -> NSTableRowView {
         if let recycled = tableView.makeView(withIdentifier: identifier, owner: nil) as? ClearTableRowView {

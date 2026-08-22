@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 
 /// In-process UI smoke driven by `--ui-smoke`.
@@ -39,6 +40,7 @@ enum UISmokeRunner {
             controller.focusInputAtEnd()
             try stepWindowGeometry(window: window, controller: controller)
             try stepChromeGeometry(window: window, controller: controller)
+            try stepScopeBarOverflow()
             try stepA(window: window, controller: controller)
             try stepB(window: window, controller: controller, store: store)
             try stepC(window: window, controller: controller, store: store)
@@ -115,34 +117,58 @@ enum UISmokeRunner {
         )
     }
 
-    /// Floating capsule Input is inset from the window edges and sits close
-    /// to the titlebar; Scope Bar is tall enough for glass chips.
+    /// Floating rounded-rect Input is inset from the window edges and sits
+    /// close to the titlebar; Scope Bar chips are plain buttons, not glass.
+    /// Standalone bar with more Projects than fit: the last chip must be
+    /// able to scroll fully clear of the trailing fade.
+    private static func stepScopeBarOverflow() throws {
+        let bar = ScopeBarView(frame: NSRect(x: 0, y: 0, width: 360, height: 40))
+        let projects = (0..<12).map {
+            Project(id: "smoke-p\($0)", name: "Project \($0)", manualOrder: Int64($0), createdAt: 0, updatedAt: 0)
+        }
+        bar.update(scope: .all, projects: projects)
+        guard let clearance = bar.smokeScrollToEndClearance() else {
+            throw SmokeFailure("scope bar with 12 projects in 360pt should overflow")
+        }
+        if clearance < -0.5 {
+            throw SmokeFailure("last scope chip stops \(-clearance)pt inside the trailing fade")
+        }
+    }
+
     private static func stepChromeGeometry(window: NSWindow, controller: MainViewController) throws {
         window.layoutIfNeeded()
         controller.view.layoutSubtreeIfNeeded()
         pump()
-        let capsule = controller.smokeInputCapsuleFrame
-        try assertClose(capsule.height, UniversalInputView.capsuleHeight, "input capsule height")
-        if capsule.minX < 12 {
-            throw SmokeFailure("input capsule should float inset from the leading edge, got x=\(capsule.minX)")
+        let input = controller.smokeInputFrame
+        try assertClose(input.height, UniversalInputView.chromeHeight, "input chrome height")
+        if input.minX < 12 {
+            throw SmokeFailure("input should float inset from the leading edge, got x=\(input.minX)")
         }
-        if abs(capsule.width - (controller.view.bounds.width - capsule.minX * 2)) > 2 {
-            throw SmokeFailure("input capsule should keep matching side insets, frame=\(capsule) view=\(controller.view.bounds)")
+        if abs(input.width - (controller.view.bounds.width - input.minX * 2)) > 2 {
+            throw SmokeFailure("input should keep matching side insets, frame=\(input) view=\(controller.view.bounds)")
+        }
+        if controller.smokeInputPlaceholder != "Record or search…" {
+            throw SmokeFailure(
+                "input placeholder should be 'Record or search…', got '\(controller.smokeInputPlaceholder)'"
+            )
         }
         try waitUntil(showing: "titlebar safe area is applied") {
             controller.view.safeAreaInsets.top >= 20
         }
-        let topGap = controller.view.bounds.height - capsule.maxY - controller.view.safeAreaInsets.top
+        let topGap = controller.view.bounds.height - input.maxY - controller.view.safeAreaInsets.top
         if topGap < 4 || topGap > 16 {
             throw SmokeFailure(
-                "input capsule should sit just below the titlebar, gap=\(topGap) safeArea=\(controller.view.safeAreaInsets.top)"
+                "input should sit just below the titlebar, gap=\(topGap) safeArea=\(controller.view.safeAreaInsets.top)"
             )
         }
         try assertClose(controller.smokeScopeBarHeight, 36, "scope bar height")
+        try waitUntil(showing: "scope bar All chip exists") {
+            controller.smokeAllChipFrameInWindow != nil
+        }
         try assertHit(
             ScopeChipButton.self,
             in: window,
-            at: midpoint(controller.smokeAllChipFrameInWindow),
+            at: midpoint(controller.smokeAllChipFrameInWindow, "All chip"),
             "All chip"
         )
         try assertClose(controller.smokeScopeBarFrame.minX, 0, "scope bar leading at the window edge")
@@ -159,17 +185,102 @@ enum UISmokeRunner {
         guard let allChip = controller.smokeAllChipFrame else {
             throw SmokeFailure("All chip should exist after launch")
         }
-        try assertClose(allChip.minX, capsule.minX, "All chip aligns with the input capsule")
-        guard let selectedColor = controller.smokeSelectedScopeChipTextColor,
-              let rgb = selectedColor.usingColorSpace(.sRGB) else {
+        try assertClose(allChip.minX, input.minX, "All chip aligns with the input")
+        let listGap = controller.smokeListTopGap
+        if listGap < 6 || listGap > 12 {
+            throw SmokeFailure("scope bar should sit with similar air above the list as above the chips, gap=\(listGap)")
+        }
+        let add = controller.smokeAddButtonFrame
+        if add.width < 20 || add.height < 20 {
+            throw SmokeFailure("scope add button should exist, frame=\(add)")
+        }
+        if add.minX <= allChip.minX {
+            throw SmokeFailure("scope add button should sit after All, add=\(add) all=\(allChip)")
+        }
+        if !controller.smokeTrashAllowsMultipleSelection {
+            throw SmokeFailure("Trash should allow multi-select")
+        }
+        if controller.smokeScopeChipUsesGlass {
+            throw SmokeFailure("scope chips should be plain buttons, not glass")
+        }
+        try assertClose(controller.smokeIdleChipBorderWidth, 1, "idle chip stroke width")
+        guard let idleBorder = controller.smokeIdleChipBorderColor else {
+            throw SmokeFailure("idle chip should have a stroke color")
+        }
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        var sr: CGFloat = 0, sg: CGFloat = 0, sb: CGFloat = 0, sa: CGFloat = 0
+        var strokeConverted = false
+        controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            guard let borderRGB = NSColor(cgColor: idleBorder)?.usingColorSpace(.deviceRGB),
+                  let strokeRGB = ChipChrome.outlineColor.usingColorSpace(.deviceRGB) else { return }
+            borderRGB.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+            strokeRGB.getRed(&sr, green: &sg, blue: &sb, alpha: &sa)
+            strokeConverted = true
+        }
+        if !strokeConverted {
+            throw SmokeFailure("idle chip stroke color could not be resolved")
+        }
+        if abs(br - sr) > 0.08 || abs(bg - sg) > 0.08 || abs(bb - sb) > 0.08 || abs(ba - sa) > 0.08 {
+            throw SmokeFailure(
+                "idle chip stroke should match tertiaryLabelColor, got (\(br), \(bg), \(bb), \(ba))"
+            )
+        }
+        guard let selectedColor = controller.smokeSelectedScopeChipTextColor else {
             throw SmokeFailure("selected scope chip should have a title color")
         }
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
-        if r < 0.9 || g < 0.9 || b < 0.9 || a < 0.9 {
-            throw SmokeFailure("selected scope chip text should be white, got \(selectedColor)")
+        var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
+        var converted = false
+        controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            guard let selectedRGB = selectedColor.usingColorSpace(.sRGB),
+                  let labelRGB = NSColor.labelColor.usingColorSpace(.sRGB) else { return }
+            selectedRGB.getRed(&r, green: &g, blue: &b, alpha: &a)
+            labelRGB.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
+            converted = true
         }
-        try assertClose(Preferences.recordFontSize, Preferences.defaultRecordFontSize, "default record font size")
+        if !converted {
+            throw SmokeFailure("selected scope chip title color could not be resolved")
+        }
+        if abs(r - lr) > 0.15 || abs(g - lg) > 0.15 || abs(b - lb) > 0.15 {
+            throw SmokeFailure("selected scope chip text should use labelColor, got \(selectedColor)")
+        }
+        guard let selectedFill = controller.smokeSelectedScopeChipFillColor else {
+            throw SmokeFailure("selected scope chip should have a fill color")
+        }
+        var fr: CGFloat = 0, fg: CGFloat = 0, fb: CGFloat = 0, fa: CGFloat = 0
+        var cr: CGFloat = 0, cg: CGFloat = 0, cb: CGFloat = 0, ca: CGFloat = 0
+        var fillConverted = false
+        controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            guard let fillRGB = NSColor(cgColor: selectedFill)?.usingColorSpace(.deviceRGB),
+                  let controlRGB = ChipChrome.selectedFill.usingColorSpace(.deviceRGB) else { return }
+            fillRGB.getRed(&fr, green: &fg, blue: &fb, alpha: &fa)
+            controlRGB.getRed(&cr, green: &cg, blue: &cb, alpha: &ca)
+            fillConverted = true
+        }
+        if !fillConverted {
+            throw SmokeFailure("selected scope chip fill color could not be resolved")
+        }
+        if abs(fr - cr) > 0.08 || abs(fg - cg) > 0.08 || abs(fb - cb) > 0.08 || abs(fa - ca) > 0.08 {
+            throw SmokeFailure(
+                "selected scope chip fill should match controlBackgroundColor, got (\(fr), \(fg), \(fb), \(fa))"
+            )
+        }
+        if controller.smokeHasInboxGroupHeader {
+            throw SmokeFailure("All view should not show an Inbox group header")
+        }
+        if let titleX = controller.smokeFirstGroupHeaderTitleMinX {
+            if let allTitleX = controller.smokeAllTitleMinX {
+                try assertClose(titleX, allTitleX + LayoutChrome.listTextNudge, "group title aligns with All text", tolerance: 2)
+            }
+            guard let disclosureX = controller.smokeFirstGroupHeaderDisclosureMinX else {
+                throw SmokeFailure("group header should have a trailing collapse control")
+            }
+            if disclosureX <= titleX + 20 {
+                throw SmokeFailure(
+                    "collapse control should sit on the trailing side, disclosure x=\(disclosureX) title x=\(titleX)"
+                )
+            }
+        }
     }
 
     /// ⌘, opens the Settings window; close it so later steps keep the main window.
@@ -236,15 +347,24 @@ enum UISmokeRunner {
         try assertEqual(db.count, 1, "DB should have 1 row after first create")
         try assertEqual(db[0].content, "smoke alpha", "created content")
 
-        try click(at: midpoint(controller.smokeFirstGroupHeaderFrameInWindow), window: window)
-        try waitUntil(showing: "Inbox group collapsed after header click") {
-            controller.smokeFirstGroupCollapsed == true
-                && controller.smokeVisibleRecords.isEmpty
+        guard let recordX = controller.smokeFirstRecordPriorityMinX else {
+            throw SmokeFailure("record cell should exist after first create")
         }
-        try click(at: midpoint(controller.smokeFirstGroupHeaderFrameInWindow), window: window)
-        try waitUntil(showing: "Inbox group expanded after second header click") {
-            controller.smokeFirstGroupCollapsed == false
-                && controller.smokeVisibleRecords.count == 1
+        if let allTitleX = controller.smokeAllTitleMinX {
+            try assertClose(recordX, allTitleX + LayoutChrome.listTextNudge, "priority text aligns with All text", tolerance: 2)
+        }
+        if let timeGap = controller.smokeFirstRecordTimeTrailingGap {
+            try assertClose(timeGap, 16, "time trailing aligns with the 16pt rail", tolerance: 14)
+        }
+        if let timeGap = controller.smokeFirstRecordTimeTrailingGap,
+           let disclosureGap = controller.smokeFirstGroupDisclosureTrailingGap {
+            try assertClose(timeGap, disclosureGap, "time and disclosure share the trailing rail", tolerance: 2)
+        }
+        if controller.smokeHasInboxGroupHeader {
+            throw SmokeFailure("creating into All should not grow an Inbox group header")
+        }
+        if let titleX = controller.smokeFirstGroupHeaderTitleMinX {
+            try assertClose(recordX, titleX, "record and group title share the same leading", tolerance: 1)
         }
     }
 
@@ -463,8 +583,35 @@ enum UISmokeRunner {
 
         controller.focusInputAtEnd()
         try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
-        try waitUntil(showing: "long record selected before ⌫") {
+        try waitUntil(showing: "long record selected before Inline Edit") {
             controller.smokeSelectedRecord?.id == longRecord.id
+        }
+
+        // Inline Edit keeps the wrapped layout: the editor is multi-line and
+        // the row re-measures live as text is typed, then Esc restores it.
+        guard let heightBeforeEdit = controller.smokeRowHeight(forRecordID: longRecord.id) else {
+            throw SmokeFailure("long record row height unavailable before Inline Edit")
+        }
+        try sendReturn(window: window)
+        try waitUntil(showing: "Inline Edit started on long record") {
+            controller.smokeIsEditingRecord(id: longRecord.id)
+        }
+        for character in String(repeating: "y", count: 120) {
+            try sendCharacter(character, window: window)
+        }
+        try waitUntil(showing: "row grows while typing in Inline Edit") {
+            guard let height = controller.smokeRowHeight(forRecordID: longRecord.id) else { return false }
+            return height > heightBeforeEdit + 10
+        }
+        try sendSpecial(keyCode: KeyCode.escape, characters: "\u{1b}", window: window)
+        try waitUntil(showing: "Inline Edit ended after Esc") { !controller.smokeIsEditingRecord(id: longRecord.id) }
+        try waitUntil(showing: "Inline Edit cancelled and row height restored") {
+            guard !controller.smokeIsEditingRecord(id: longRecord.id),
+                  let height = controller.smokeRowHeight(forRecordID: longRecord.id) else { return false }
+            return abs(height - heightBeforeEdit) < 1
+        }
+        try waitUntil(showing: "long record re-selected after Esc") {
+            controller.smokeSelectedRecord?.id == longRecord.id && controller.smokeIsTableFirstResponder()
         }
         try sendSpecial(keyCode: KeyCode.delete, characters: "\u{7f}", window: window)
         try waitUntil(showing: "long record removed from the list") {
@@ -530,6 +677,20 @@ enum UISmokeRunner {
     }
 
     private static func sendCommand(_ character: String, keyCode: UInt16, window: NSWindow) throws {
+        // Menu key equivalents with a nil target resolve through the *key*
+        // window's responder chain. When the smoke process is not the
+        // active app (the usual case from a shell) there is no key window
+        // and the action silently goes nowhere, so dispatch straight down
+        // the smoke window's responder chain instead.
+        if NSApp.keyWindow == nil,
+           let item = menuItem(keyEquivalent: character, in: NSApp.mainMenu),
+           let action = item.action {
+            guard window.firstResponder?.tryToPerform(action, with: item) == true else {
+                throw SmokeFailure("⌘\(character) not handled by the responder chain")
+            }
+            pump()
+            return
+        }
         guard let event = makeKeyEvent(
             characters: character,
             keyCode: keyCode,
@@ -548,6 +709,18 @@ enum UISmokeRunner {
             return
         }
         throw SmokeFailure("⌘\(character) was not handled as a key equivalent")
+    }
+
+    private static func menuItem(keyEquivalent: String, in menu: NSMenu?) -> NSMenuItem? {
+        for item in menu?.items ?? [] {
+            if item.keyEquivalent == keyEquivalent, item.keyEquivalentModifierMask == .command {
+                return item
+            }
+            if let found = menuItem(keyEquivalent: keyEquivalent, in: item.submenu) {
+                return found
+            }
+        }
+        return nil
     }
 
     private static func sendKey(
@@ -640,9 +813,9 @@ enum UISmokeRunner {
         _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
     }
 
-    private static func midpoint(_ rect: NSRect?) throws -> NSPoint {
+    private static func midpoint(_ rect: NSRect?, _ label: String) throws -> NSPoint {
         guard let rect, rect.width > 0, rect.height > 0 else {
-            throw SmokeFailure("expected a non-empty frame for click hit-testing")
+            throw SmokeFailure("expected a non-empty frame for \(label) hit-testing, got \(String(describing: rect))")
         }
         return NSPoint(x: rect.midX, y: rect.midY)
     }
@@ -739,6 +912,7 @@ enum UISmokeRunner {
         static let returnKey: UInt16 = 36
         static let space: UInt16 = 49
         static let delete: UInt16 = 51
+        static let escape: UInt16 = 53
         static let leftArrow: UInt16 = 123
         static let downArrow: UInt16 = 125
     }
@@ -748,3 +922,4 @@ private struct SmokeFailure: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
 }
+#endif

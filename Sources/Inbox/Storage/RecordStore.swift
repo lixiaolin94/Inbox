@@ -199,6 +199,38 @@ final class RecordStore {
         }
     }
 
+    // MARK: - Batch plumbing (multi-select)
+
+    /// Fires `operation` once per id and reports once after the last
+    /// completion. All store completions land on the main queue, in order,
+    /// so the shared counters need no locking. On any failure the caller
+    /// gets the first error; the serial queue has still applied the other
+    /// writes, so callers must re-sync from the DB rather than patch local
+    /// state.
+    static func batch(
+        ids: [String],
+        operation: (String, @escaping (Result<Void, Error>) -> Void) -> Void,
+        completion: @escaping (Error?) -> Void
+    ) {
+        guard !ids.isEmpty else {
+            completion(nil)
+            return
+        }
+        var remaining = ids.count
+        var firstError: Error?
+        for id in ids {
+            operation(id) { result in
+                if case .failure(let error) = result, firstError == nil {
+                    firstError = error
+                }
+                remaining -= 1
+                if remaining == 0 {
+                    completion(firstError)
+                }
+            }
+        }
+    }
+
     // MARK: - Reads
 
     /// `token` is echoed back unchanged so the caller can discard results

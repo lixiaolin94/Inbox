@@ -58,7 +58,6 @@ final class ListRowTests: XCTestCase {
         )
 
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .record(inboxA),
             .record(inboxB),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
@@ -78,7 +77,6 @@ final class ListRowTests: XCTestCase {
             isCollapsed: { _ in false }
         )
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .groupHeader(.project("p1"), title: "Empty", isCollapsed: false)
         ])
     }
@@ -130,13 +128,12 @@ final class ListRowTests: XCTestCase {
             }
         )
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .record(inbox),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: true)
         ])
     }
 
-    func testCollapsedInboxHidesInboxRecords() {
+    func testInboxRecordsHaveNoGroupHeaderAndIgnoreCollapse() {
         let inbox = record("i1")
         let rows = ListRows.build(
             records: [inbox],
@@ -145,9 +142,8 @@ final class ListRowTests: XCTestCase {
             hideEmptyGroups: false,
             isCollapsed: { $0 == .inbox }
         )
-        XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: true)
-        ])
+        XCTAssertEqual(rows, [.record(inbox)])
+        XCTAssertFalse(rows.contains { $0.groupID == .inbox })
     }
 
     func testCollapsedGroupWithSearchMatchesStillShowsHeader() {
@@ -181,10 +177,10 @@ final class ListRowTests: XCTestCase {
                 return false
             }
         )
-        XCTAssertEqual(ListRowIndex.tableRow(forRecordID: "i1", in: rows), 1)
+        XCTAssertEqual(ListRowIndex.tableRow(forRecordID: "i1", in: rows), 0)
         XCTAssertNil(ListRowIndex.tableRow(forRecordID: "h1", in: rows))
-        XCTAssertEqual(ListRowIndex.record(atTableRow: 1, in: rows)?.id, "i1")
-        XCTAssertNil(ListRowIndex.record(atTableRow: 0, in: rows))
+        XCTAssertEqual(ListRowIndex.record(atTableRow: 0, in: rows)?.id, "i1")
+        XCTAssertNil(ListRowIndex.record(atTableRow: 1, in: rows))
         XCTAssertEqual(ListRowIndex.visibleRecords(in: rows).map(\.id), ["i1"])
     }
 
@@ -207,7 +203,6 @@ final class ListRowTests: XCTestCase {
         XCTAssertEqual(rows, [
             .record(openA),
             .record(openB),
-            .resolvedSectionHeader,
             .record(resolvedA),
             .record(resolvedB)
         ])
@@ -251,7 +246,6 @@ final class ListRowTests: XCTestCase {
             showResolved: true
         )
         XCTAssertEqual(rows, [
-            .resolvedSectionHeader,
             .record(resolved)
         ])
     }
@@ -272,13 +266,10 @@ final class ListRowTests: XCTestCase {
             showResolved: true
         )
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .record(inboxOpen),
-            .resolvedSectionHeader,
             .record(inboxResolved),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
             .record(p1Open),
-            .resolvedSectionHeader,
             .record(p1Resolved)
         ])
     }
@@ -298,7 +289,6 @@ final class ListRowTests: XCTestCase {
         )
         XCTAssertEqual(rows, [
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
-            .resolvedSectionHeader,
             .record(match)
         ])
         XCTAssertFalse(rows.contains { $0.groupID == .inbox })
@@ -318,7 +308,6 @@ final class ListRowTests: XCTestCase {
             showResolved: true
         )
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: true),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: true)
         ])
     }
@@ -338,26 +327,24 @@ final class ListRowTests: XCTestCase {
         XCTAssertEqual(rows, [
             .record(open),
             .record(reopened),
-            .resolvedSectionHeader,
             .record(stillResolved)
         ])
     }
 
-    func testResolvedSectionHeaderIsSkippedByRecordMapping() {
+    func testResolvedFollowOpenWithoutHeaderRow() {
         let open = record("o")
         let resolved = record("r", status: 1)
         let rows = ListRows.build(
-            records: [open, resolved],
+            records: [resolved, open],
             projects: [],
             grouped: false,
             hideEmptyGroups: false,
             isCollapsed: { _ in false },
             showResolved: true
         )
-        XCTAssertEqual(rows.count, 3)
-        XCTAssertNil(ListRowIndex.record(atTableRow: 1, in: rows))
+        XCTAssertEqual(rows.count, 2)
         XCTAssertEqual(ListRowIndex.tableRow(forRecordID: "o", in: rows), 0)
-        XCTAssertEqual(ListRowIndex.tableRow(forRecordID: "r", in: rows), 2)
+        XCTAssertEqual(ListRowIndex.tableRow(forRecordID: "r", in: rows), 1)
         XCTAssertEqual(ListRowIndex.visibleRecords(in: rows).map(\.id), ["o", "r"])
     }
 
@@ -373,12 +360,12 @@ final class ListRowTests: XCTestCase {
             isCollapsed: { _ in false },
             showResolved: true
         )
-        XCTAssertEqual(rows.map { $0.record?.id }, ["o", nil, "r"])
+        XCTAssertEqual(rows.map { $0.record?.id }, ["o", "r"])
     }
 
     // MARK: - Trash grouping (PRD §12)
 
-    func testTrashRowsGroupInboxThenProjectsAndOmitEmptyGroups() {
+    func testTrashRowsListUnassignedHeaderlessThenProjectsAndOmitEmptyGroups() {
         let p1 = project("p1", name: "OMotion", order: 0)
         let p2 = project("p2", name: "Whisper", order: 1)
         let inboxA = record("i1", status: 2)
@@ -390,7 +377,6 @@ final class ListRowTests: XCTestCase {
             projects: [p1, p2]
         )
         XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .record(inboxA),
             .record(inboxB),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
@@ -407,19 +393,14 @@ final class ListRowTests: XCTestCase {
         let newer = record("new", status: 2)
         let older = record("old", status: 2)
         let rows = TrashRows.build(records: [newer, older], projects: [])
-        XCTAssertEqual(rows, [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
-            .record(newer),
-            .record(older)
-        ])
+        XCTAssertEqual(rows, [.record(newer), .record(older)])
     }
 
     // MARK: - Drop target group (All View drag-to-move)
 
-    /// rows: [Inbox header, a, b, P1 header, c]
+    /// rows: [a, b, P1 header, c] — All view has no Inbox header.
     private var dropRows: [ListRow] {
         [
-            .groupHeader(.inbox, title: "Inbox", isCollapsed: false),
             .record(record("a")),
             .record(record("b")),
             .groupHeader(.project("p1"), title: "OMotion", isCollapsed: false),
@@ -428,22 +409,24 @@ final class ListRowTests: XCTestCase {
     }
 
     func testDropOnRecordResolvesToItsGroup() {
-        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 2, in: dropRows)?.groupID, .inbox)
-        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 4, in: dropRows)?.groupID, .project("p1"))
+        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 1, in: dropRows)?.groupID, .inbox)
+        XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 3, in: dropRows)?.groupID, .project("p1"))
     }
 
     func testDropOnHeaderResolvesToThatGroup() {
-        let target = ListRowIndex.dropTargetGroup(forCandidateRow: 3, in: dropRows)
+        let target = ListRowIndex.dropTargetGroup(forCandidateRow: 2, in: dropRows)
         XCTAssertEqual(target?.groupID, .project("p1"))
-        XCTAssertEqual(target?.headerRow, 3)
+        XCTAssertEqual(target?.headerRow, 2)
     }
 
     func testDropPastEndClampsToLastGroup() {
         XCTAssertEqual(ListRowIndex.dropTargetGroup(forCandidateRow: 99, in: dropRows)?.groupID, .project("p1"))
     }
 
-    func testDropAboveEverythingHasNoTarget() {
-        XCTAssertNil(ListRowIndex.dropTargetGroup(forCandidateRow: -1, in: dropRows))
+    func testDropInHeaderlessPrefixIsInbox() {
+        let above = ListRowIndex.dropTargetGroup(forCandidateRow: -1, in: dropRows)
+        XCTAssertEqual(above?.groupID, .inbox)
+        XCTAssertNil(above?.headerRow)
         XCTAssertNil(ListRowIndex.dropTargetGroup(forCandidateRow: 0, in: []))
     }
 }

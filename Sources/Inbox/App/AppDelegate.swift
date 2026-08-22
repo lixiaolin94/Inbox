@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordStore: RecordStore!
     private var syncEngine: InboxSyncEngine?
     private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
     private var settingsWindowController: SettingsWindowController?
     private var launch = LaunchConfiguration.parse([])
 
@@ -56,17 +57,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fatalError("Failed to open local database: \(error)")
         }
 
-        syncEngine = InboxSyncEngine.makeIfEnabled(
-            store: recordStore,
-            stateURL: InboxSyncEngine.stateURL(databasePath: launch.databasePath),
-            launch: launch
-        )
-
+        #if DEBUG
         if launch.syncProbe != nil {
             NSApp.setActivationPolicy(.accessory)
+            startSyncEngine()
             SyncProbeRunner.start(store: recordStore, engine: syncEngine, configuration: launch)
             return
         }
+        #endif
 
         mainViewController = MainViewController(store: recordStore)
         mainViewController.onProjectsChanged = { [weak self] projects in
@@ -111,14 +109,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         TitlebarBackdrop.hideSystemFill(in: window)
         self.window = window
-
-        installStatusItem()
         NSApp.activate(ignoringOtherApps: true)
-        refreshOfflineNotice()
 
+        // Off the first-frame path: the CloudKit engine (~36 ms) and the
+        // status item (~6 ms) are not needed to show the window. A fixed
+        // short delay is simpler and more predictable than hooking the
+        // first CA commit. Writes made before the engine exists are already
+        // recorded as pending in the store and `InboxSyncEngine.init`
+        // replays them, so nothing is lost.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            self.startSyncEngine()
+            self.refreshOfflineNotice()
+            self.installStatusItem()
+        }
+
+        #if DEBUG
         if launch.isUISmoke {
             UISmokeRunner.start(window: window, controller: mainViewController, store: recordStore)
         }
+        #endif
+    }
+
+    private func startSyncEngine() {
+        syncEngine = InboxSyncEngine.makeIfEnabled(
+            store: recordStore,
+            stateURL: InboxSyncEngine.stateURL(databasePath: launch.databasePath),
+            launch: launch
+        )
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -151,13 +168,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu bar (PRD §13.3)
 
-    /// Template status item. The menu is built once; Launch at Login state
-    /// is refreshed in `validateMenuItem` when the menu opens — no timer.
+    /// Template status item. Left click opens the main window; right click
+    /// shows the menu (attached only for the duration of the popup, since a
+    /// permanent `item.menu` would swallow left clicks too). Launch at Login
+    /// state is refreshed in `validateMenuItem` when the menu opens — no timer.
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "tray", accessibilityDescription: "Inbox")
+            button.image = NSImage(systemSymbolName: "tray.fill", accessibilityDescription: "Inbox")
             button.image?.isTemplate = true
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         let menu = NSMenu()
         let openItem = NSMenuItem(title: "Open Inbox", action: #selector(presentMainWindow), keyEquivalent: "")
@@ -168,8 +190,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchItem.target = self
         menu.addItem(launchItem)
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
-        item.menu = menu
+        statusMenu = menu
         statusItem = item
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp, let item = statusItem, let menu = statusMenu {
+            item.menu = menu
+            sender.performClick(nil)
+            item.menu = nil
+        } else {
+            presentMainWindow()
+        }
     }
 
     /// SMAppService only applies to a bundled .app. A SPM-built naked
@@ -257,6 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    #if DEBUG
     func smokeSettingsWindowVisible() -> Bool {
         settingsWindowController?.window?.isVisible == true
     }
@@ -264,6 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func smokeCloseSettings() {
         settingsWindowController?.window?.orderOut(nil)
     }
+    #endif
 
     /// Engine-off (user switch / no entitlement / smoke) stays silent.
     /// Engine-on with a non-available account shows the utility-bar label.

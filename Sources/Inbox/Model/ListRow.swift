@@ -8,13 +8,12 @@ enum GroupID: Equatable, Hashable {
 }
 
 /// One row in the Record List table. In Project Scope this is a flat sequence
-/// of `.record` rows (plus an optional Resolved subsection). In All Scope,
-/// group headers wrap each bucket; Open and Resolved never mix inside a group.
+/// of `.record` rows. In All Scope, unassigned Records sit at the top with no
+/// group header (so they are not confused with a Project named Inbox);
+/// Project groups still have headers. Open and Resolved never mix inside a
+/// group: Resolved rows follow the Open ones and are marked by their style.
 enum ListRow: Equatable {
     case groupHeader(GroupID, title: String, isCollapsed: Bool)
-    /// Lightweight, non-navigable label between Open and Resolved records
-    /// inside one display group (PRD §11). Not a GroupID and not collapsible.
-    case resolvedSectionHeader
     case record(Record)
 }
 
@@ -23,15 +22,16 @@ enum ListRow: Equatable {
 /// all read this sequence so row↔record mapping lives in one place.
 ///
 /// Status grouping is this layer's job: when `showResolved` is on, each
-/// display group emits Open records, then a `.resolvedSectionHeader`, then
-/// Resolved records. Sort order is the caller's job — this preserves the
-/// relative order of each status inside the input `records` array.
+/// display group emits Open records, then Resolved records. Sort order is
+/// the caller's job — this preserves the relative order of each status
+/// inside the input `records` array.
 enum ListRows {
     /// - Parameter grouped: All Scope is grouped; Project Scope is not.
     /// - Parameter hideEmptyGroups: true while Universal Input has a search
     ///   term — a group with no matching records is omitted entirely.
-    /// - Parameter isCollapsed: per-group fold state. Collapsed groups still
-    ///   emit a header (when not hidden) but no record rows.
+    /// - Parameter isCollapsed: per-Project fold state. Collapsed groups still
+    ///   emit a header (when not hidden) but no record rows. Unassigned
+    ///   Records in All view have no header and ignore this.
     /// - Parameter showResolved: PRD §11. Off (default) drops Resolved
     ///   records. On splits each group Open → Resolved.
     static func build(
@@ -50,16 +50,12 @@ enum ListRows {
 
         var rows: [ListRow] = []
 
+        // Unassigned Records are the All-view default list: no "Inbox" header,
+        // and they cannot be collapsed. An empty bucket emits nothing.
         let inboxRecords = visible.filter { $0.projectID == nil }
-        appendGroup(
-            to: &rows,
-            id: .inbox,
-            title: "Inbox",
-            records: inboxRecords,
-            hideIfEmpty: hideEmptyGroups,
-            isCollapsed: isCollapsed(.inbox),
-            showResolved: showResolved
-        )
+        if !inboxRecords.isEmpty {
+            rows.append(contentsOf: recordRows(from: inboxRecords, showResolved: showResolved))
+        }
 
         for project in projects {
             let groupRecords = visible.filter { $0.projectID == project.id }
@@ -99,21 +95,16 @@ enum ListRows {
         }
     }
 
-    /// Open records first, then an optional Resolved subsection. Relative
-    /// order inside each status is the input order (already sorted by fetch
-    /// or a local `RecordSort.sorted`).
+    /// Open records first, then Resolved ones (PRD: "Open 和 Resolved 始终
+    /// 分组"). No header row: the strikethrough style already marks them.
+    /// Relative order inside each status is the input order.
     private static func recordRows(from records: [Record], showResolved: Bool) -> [ListRow] {
         if !showResolved {
             return records.map { .record($0) }
         }
         let open = records.filter { $0.status == RecordStatus.open.rawValue }
         let resolved = records.filter { $0.status == RecordStatus.resolved.rawValue }
-        var rows = open.map { ListRow.record($0) }
-        if !resolved.isEmpty {
-            rows.append(.resolvedSectionHeader)
-            rows.append(contentsOf: resolved.map { .record($0) })
-        }
-        return rows
+        return (open + resolved).map { .record($0) }
     }
 }
 
@@ -124,11 +115,9 @@ enum TrashRows {
     static func build(records: [Record], projects: [Project]) -> [ListRow] {
         var rows: [ListRow] = []
 
-        let inbox = records.filter { $0.projectID == nil }
-        if !inbox.isEmpty {
-            rows.append(.groupHeader(.inbox, title: "Inbox", isCollapsed: false))
-            rows.append(contentsOf: inbox.map { .record($0) })
-        }
+        // Same rule as the All view: unassigned Records lead the list with
+        // no "Inbox" header.
+        rows.append(contentsOf: records.filter { $0.projectID == nil }.map { .record($0) })
 
         for project in projects {
             let group = records.filter { $0.projectID == project.id }
@@ -174,10 +163,12 @@ enum ListRowIndex {
 
     /// Drag & drop (All View): the group a proposed drop row belongs to,
     /// found by walking upward from `candidateRow` to the nearest group
-    /// header. `candidateRow` may be past the end (drop below the last row —
-    /// clamped) or −1 / before the first header (drop above everything —
-    /// nil, no valid target). Only meaningful for grouped row sequences.
-    static func dropTargetGroup(forCandidateRow candidateRow: Int, in rows: [ListRow]) -> (headerRow: Int, groupID: GroupID)? {
+    /// header. The headerless prefix (unassigned Records) is Inbox;
+    /// `headerRow` is nil there because All view has no Inbox header.
+    /// `candidateRow` may be past the end (drop below the last row —
+    /// clamped) or −1 / above the first row (still Inbox). Empty `rows`
+    /// has no target.
+    static func dropTargetGroup(forCandidateRow candidateRow: Int, in rows: [ListRow]) -> (headerRow: Int?, groupID: GroupID)? {
         guard !rows.isEmpty else { return nil }
         var row = min(candidateRow, rows.count - 1)
         while row >= 0 {
@@ -186,6 +177,6 @@ enum ListRowIndex {
             }
             row -= 1
         }
-        return nil
+        return (headerRow: nil, groupID: .inbox)
     }
 }

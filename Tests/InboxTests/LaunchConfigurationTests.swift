@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 #if SWIFT_PACKAGE
 @testable import Inbox
@@ -96,26 +97,14 @@ final class PreferencesTests: XCTestCase {
         XCTAssertTrue(Preferences.isSyncEnabled)
     }
 
-    func testRecordFontSizeDefaultsToFifteen() {
+    func testRecordFontSizeMatchesSystemBody() {
         Preferences.configure(suiteName: suiteName)
-        XCTAssertEqual(Preferences.recordFontSize, Preferences.defaultRecordFontSize)
+        XCTAssertEqual(Preferences.recordFontSize, NSFont.preferredFont(forTextStyle: .body).pointSize)
     }
 
-    func testRecordFontSizeClampsToSupportedRange() {
+    func testRecordRowMinHeightUsesBodyFont() {
         Preferences.configure(suiteName: suiteName)
-        Preferences.recordFontSize = 99
-        XCTAssertEqual(Preferences.recordFontSize, Preferences.maxRecordFontSize)
-        Preferences.recordFontSize = 8
-        XCTAssertEqual(Preferences.recordFontSize, Preferences.minRecordFontSize)
-        Preferences.recordFontSize = 17
-        XCTAssertEqual(Preferences.recordFontSize, 17)
-    }
-
-    func testRecordRowMinHeightTracksFontSize() {
-        Preferences.configure(suiteName: suiteName)
-        Preferences.recordFontSize = 15
-        XCTAssertEqual(Preferences.recordRowMinHeight, 35)
-        Preferences.recordFontSize = 18
-        XCTAssertEqual(Preferences.recordRowMinHeight, 38)
+        let expected = NSFont.preferredFont(forTextStyle: .body).pointSize + 10 * 2
+        XCTAssertEqual(Preferences.recordRowMinHeight, expected)
     }
 }

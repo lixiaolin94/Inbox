@@ -45,6 +45,18 @@ final class SQLiteDatabase {
         }
         handle = db
         sqlite3_busy_timeout(handle, 5000)
+
+        // WAL + synchronous=NORMAL: a commit no longer fsyncs the main file
+        // (single-record transaction ~0.33 ms -> ~0.05 ms) and the sync
+        // layer's reads don't wait on an in-flight write. ":memory:" has no
+        // journal to switch and answers "memory"; any other non-"wal" answer
+        // is a refused switch on a file database, as fatal as a failed open.
+        var journalMode = ""
+        try query("PRAGMA journal_mode=WAL;") { journalMode = columnText($0, 0) ?? "" }
+        guard journalMode == "wal" || journalMode == "memory" else {
+            throw SQLiteError.openFailed("journal_mode=WAL refused (\(journalMode))")
+        }
+        try exec("PRAGMA synchronous=NORMAL;")
     }
 
     deinit {

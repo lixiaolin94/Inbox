@@ -1,15 +1,25 @@
 import AppKit
 
-/// Capsule host that uses Liquid Glass on macOS 26+ and a frosted
+/// Rounded glass host that uses Liquid Glass on macOS 26+ and a frosted
 /// `NSVisualEffectView` fallback on earlier systems.
 ///
-/// Callers size this view; corner radius always tracks `bounds.height / 2`.
+/// Callers size this view. Pass `cornerRadius` for a rounded rect; `nil`
+/// (the default) is a capsule (`bounds.height / 2`).
 /// Put controls inside `contentView` — do not add siblings on top of the
 /// glass, which would sit outside the material.
+///
+/// This view never clips. `NSGlassEffectView` draws a drop shadow outside
+/// its bounds on macOS 26; clipping ancestors shear that shadow into a
+/// hard rectangle.
 final class GlassCapsuleView: NSView {
     let contentView = NSView()
 
     var tintColor: NSColor? {
+        didSet { applyChrome() }
+    }
+
+    /// `nil` means a capsule. Set to a point value for a rounded rect.
+    var cornerRadius: CGFloat? {
         didSet { applyChrome() }
     }
 
@@ -26,6 +36,7 @@ final class GlassCapsuleView: NSView {
 
     private func setUp() {
         wantsLayer = true
+        clipsToBounds = false
         layer?.masksToBounds = false
         contentView.translatesAutoresizingMaskIntoConstraints = false
         contentView.wantsLayer = true
@@ -33,9 +44,11 @@ final class GlassCapsuleView: NSView {
         if #available(macOS 26.0, *) {
             let view = NSGlassEffectView()
             view.style = .regular
+            view.clipsToBounds = false
             view.contentView = contentView
+            // macOS 27 新增属性；用 KVC 设置以便在 macOS 26 SDK 上也能编译。
             if #available(macOS 27.0, *) {
-                view.effectIsInteractive = true
+                view.setValue(true, forKey: "effectIsInteractive")
             }
             embed(view)
             glass = view
@@ -92,8 +105,12 @@ final class GlassCapsuleView: NSView {
         applyChrome()
     }
 
+    private func resolvedCornerRadius() -> CGFloat {
+        cornerRadius ?? max(bounds.height, 1) / 2
+    }
+
     private func applyChrome() {
-        let radius = max(bounds.height, 1) / 2
+        let radius = resolvedCornerRadius()
         if #available(macOS 26.0, *) {
             guard let view = glass as? NSGlassEffectView else { return }
             view.cornerRadius = radius

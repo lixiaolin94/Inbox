@@ -8,8 +8,8 @@ final class TrashViewController: NSViewController {
     private let store: RecordStore
     private let tableView = RecordTableView()
     private let scrollView = NSScrollView()
-    private let restoreButton = NSButton(title: "Restore", target: nil, action: nil)
-    private let deletePermanentlyButton = NSButton(title: "Delete Permanently", target: nil, action: nil)
+    private let restoreButton = ScopeChipButton(title: "Restore")
+    private let deletePermanentlyButton = ScopeChipButton(title: "Delete Permanently")
 
     private var records: [Record] = []
     private var projects: [Project] = []
@@ -58,16 +58,28 @@ final class TrashViewController: NSViewController {
             switch result {
             case .success(let records):
                 self.records = records
+                let selectedIDs = self.tableView.selectedNavigableRows.compactMap {
+                    ListRowIndex.record(atTableRow: $0, in: self.rows)?.id
+                }
                 self.rebuildRowsAndReload()
-                if let selectedID, let row = ListRowIndex.tableRow(forRecordID: selectedID, in: self.rows) {
-                    self.tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                var keep = IndexSet()
+                for id in selectedIDs {
+                    if let row = ListRowIndex.tableRow(forRecordID: id, in: self.rows) {
+                        keep.insert(row)
+                    }
+                }
+                if keep.isEmpty, let selectedID, let row = ListRowIndex.tableRow(forRecordID: selectedID, in: self.rows) {
+                    keep.insert(row)
+                }
+                if !keep.isEmpty {
+                    self.tableView.selectRowIndexes(keep, byExtendingSelection: false)
                 }
                 self.updateActionButtons()
                 if !self.view.isHidden {
                     self.takeFocus()
                 }
             case .failure(let error):
-                self.presentPersistenceFailure(error: error)
+                Dialogs.persistenceFailure(error)
             }
         }
     }
@@ -90,10 +102,10 @@ final class TrashViewController: NSViewController {
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         tableView.headerView = nil
         tableView.usesAlternatingRowBackgroundColors = false
-        tableView.style = .plain
+        tableView.style = .fullWidth
         tableView.rowSizeStyle = .custom
         tableView.selectionHighlightStyle = .regular
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
         tableView.dataSource = self
         tableView.delegate = self
@@ -104,12 +116,8 @@ final class TrashViewController: NSViewController {
         tableView.onBuildContextMenu = { [weak self] row in
             self?.contextMenu(forRow: row)
         }
-        // Trash stays single-select (`allowsMultipleSelection` above), so
-        // the IndexSet is always one row — Permanent Delete is deliberately
-        // per-Record with its own confirm.
         tableView.onRequestDelete = { [weak self] rows in
-            guard let row = rows.first else { return }
-            self?.confirmPermanentDelete(atRow: row)
+            self?.confirmPermanentDelete(records: self?.records(atRows: rows) ?? [])
         }
         tableView.onRequestEscape = { [weak self] in
             self?.onClose?()
@@ -118,6 +126,7 @@ final class TrashViewController: NSViewController {
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.automaticallyAdjustsContentInsets = false
         scrollView.drawsBackground = false
         scrollView.contentView.drawsBackground = false
         scrollView.contentView.backgroundColor = .clear
@@ -136,18 +145,10 @@ final class TrashViewController: NSViewController {
         backButton.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(backButton)
 
-        restoreButton.bezelStyle = .rounded
-        restoreButton.controlSize = .small
-        restoreButton.font = .systemFont(ofSize: 11)
-        restoreButton.target = self
-        restoreButton.action = #selector(restoreSelected)
+        restoreButton.onClick = { [weak self] in self?.restoreSelected() }
         restoreButton.translatesAutoresizingMaskIntoConstraints = false
 
-        deletePermanentlyButton.bezelStyle = .rounded
-        deletePermanentlyButton.controlSize = .small
-        deletePermanentlyButton.font = .systemFont(ofSize: 11)
-        deletePermanentlyButton.target = self
-        deletePermanentlyButton.action = #selector(deleteSelectedPermanently)
+        deletePermanentlyButton.onClick = { [weak self] in self?.deleteSelectedPermanently() }
         deletePermanentlyButton.translatesAutoresizingMaskIntoConstraints = false
 
         let actionBar = NSView()
@@ -196,10 +197,10 @@ final class TrashViewController: NSViewController {
             actionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             actionBar.heightAnchor.constraint(equalToConstant: 36),
 
-            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: 12),
+            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: LayoutChrome.contentInset),
             restoreButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor),
 
-            deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: 8),
+            deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: LayoutChrome.chipSpacing),
             deletePermanentlyButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor)
         ])
     }
@@ -211,76 +212,79 @@ final class TrashViewController: NSViewController {
     }
 
     @objc private func restoreSelected() {
-        guard let record = selectedRecord() else { return }
-        restore(record)
+        restore(records(atRows: tableView.selectedNavigableRows))
     }
 
     @objc private func deleteSelectedPermanently() {
-        guard let row = focusedRecordRow() else { return }
-        confirmPermanentDelete(atRow: row)
+        confirmPermanentDelete(records: records(atRows: tableView.selectedNavigableRows))
     }
 
-    private func restore(_ record: Record) {
-        store.restoreFromTrash(id: record.id) { [weak self] result in
+    private func restore(_ targets: [Record]) {
+        let ids = targets.map(\.id)
+        guard !ids.isEmpty else { return }
+        RecordStore.batch(ids: ids, operation: { id, done in
+            store.restoreFromTrash(id: id) { done($0.map { _ in () }) }
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.removeRecordFromList(id: record.id)
-            case .failure(let error):
-                self.presentPersistenceFailure(error: error)
+            if let error {
+                Dialogs.persistenceFailure(error)
+                return
             }
+            self.removeRecordsFromList(ids: ids)
         }
     }
 
-    private func confirmPermanentDelete(atRow row: Int) {
-        guard let record = ListRowIndex.record(atTableRow: row, in: rows) else { return }
-
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = "Delete Permanently?"
-        alert.informativeText = "“\(record.content)” will be deleted forever. This cannot be undone."
-        alert.addButton(withTitle: "Delete Permanently")
-        alert.addButton(withTitle: "Cancel")
-
-        let response = alert.runModal()
+    private func confirmPermanentDelete(records targets: [Record]) {
+        guard !targets.isEmpty else { return }
+        let confirmed = Dialogs.confirmPermanentDelete(targets)
         takeFocus()
-        guard response == .alertFirstButtonReturn else { return }
+        guard confirmed else { return }
 
-        store.permanentlyDelete(id: record.id) { [weak self] result in
+        let ids = targets.map(\.id)
+        RecordStore.batch(ids: ids, operation: { id, done in
+            store.permanentlyDelete(id: id, completion: done)
+        }) { [weak self] error in
             guard let self else { return }
-            switch result {
-            case .success:
-                self.removeRecordFromList(id: record.id)
-            case .failure(let error):
-                self.presentPersistenceFailure(error: error)
+            if let error {
+                Dialogs.persistenceFailure(error)
+                return
             }
+            self.removeRecordsFromList(ids: ids)
         }
     }
 
     private func contextMenu(forRow row: Int) -> NSMenu? {
-        guard let record = ListRowIndex.record(atTableRow: row, in: rows) else { return nil }
+        let selected = tableView.selectedNavigableRows
+        let targets: [Record]
+        if selected.contains(row) {
+            targets = records(atRows: selected)
+        } else if let record = ListRowIndex.record(atTableRow: row, in: rows) {
+            targets = [record]
+        } else {
+            return nil
+        }
         let menu = NSMenu()
-        let restoreItem = NSMenuItem(title: "Restore", action: #selector(restoreFromMenu(_:)), keyEquivalent: "")
+        let restoreTitle = targets.count == 1 ? "Restore" : "Restore \(targets.count) Records"
+        let restoreItem = NSMenuItem(title: restoreTitle, action: #selector(restoreFromMenu(_:)), keyEquivalent: "")
         restoreItem.target = self
-        restoreItem.representedObject = record.id
-        let deleteItem = NSMenuItem(title: "Delete Permanently", action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
+        restoreItem.representedObject = targets.map(\.id)
+        let deleteTitle = targets.count == 1 ? "Delete Permanently" : "Delete \(targets.count) Permanently"
+        let deleteItem = NSMenuItem(title: deleteTitle, action: #selector(deleteFromMenu(_:)), keyEquivalent: "")
         deleteItem.target = self
-        deleteItem.representedObject = record.id
+        deleteItem.representedObject = targets.map(\.id)
         menu.addItem(restoreItem)
         menu.addItem(deleteItem)
         return menu
     }
 
     @objc private func restoreFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let record = records.first(where: { $0.id == id }) else { return }
-        restore(record)
+        guard let ids = sender.representedObject as? [String] else { return }
+        restore(records.filter { ids.contains($0.id) })
     }
 
     @objc private func deleteFromMenu(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String,
-              let row = ListRowIndex.tableRow(forRecordID: id, in: rows) else { return }
-        confirmPermanentDelete(atRow: row)
+        guard let ids = sender.representedObject as? [String] else { return }
+        confirmPermanentDelete(records: records.filter { ids.contains($0.id) })
     }
 
     // MARK: - List
@@ -290,20 +294,22 @@ final class TrashViewController: NSViewController {
         tableView.reloadData()
     }
 
-    private func removeRecordFromList(id: String) {
+    private func removeRecordsFromList(ids: [String]) {
+        let idSet = Set(ids)
         let previousVisibleIDs = ListRowIndex.visibleRecords(in: rows).map(\.id)
-        records.removeAll { $0.id == id }
+        records.removeAll { idSet.contains($0.id) }
         rebuildRowsAndReload()
         updateActionButtons()
-        inheritFocus(removedID: id, previousVisibleIDs: previousVisibleIDs)
+        inheritFocus(removedIDs: ids, previousVisibleIDs: previousVisibleIDs)
     }
 
-    private func inheritFocus(removedID: String, previousVisibleIDs: [String]) {
-        guard let index = previousVisibleIDs.firstIndex(of: removedID) else {
+    private func inheritFocus(removedIDs: [String], previousVisibleIDs: [String]) {
+        let remaining = ListRowIndex.visibleRecords(in: rows)
+        let firstRemoved = previousVisibleIDs.firstIndex { removedIDs.contains($0) }
+        guard let index = firstRemoved else {
             takeFocus()
             return
         }
-        let remaining = ListRowIndex.visibleRecords(in: rows)
         if let nextIndex = RowFocusInheritance.nextFocusIndex(
             afterRemovingRowAt: index,
             remainingCount: remaining.count
@@ -327,29 +333,16 @@ final class TrashViewController: NSViewController {
         updateActionButtons()
     }
 
-    private func selectedRecord() -> Record? {
-        ListRowIndex.record(atTableRow: tableView.selectedRow, in: rows)
-    }
-
-    private func focusedRecordRow() -> Int? {
-        let row = tableView.selectedRow
-        guard ListRowIndex.record(atTableRow: row, in: rows) != nil else { return nil }
-        return row
+    private func records(atRows rowIndexes: IndexSet) -> [Record] {
+        rowIndexes.compactMap { ListRowIndex.record(atTableRow: $0, in: rows) }
     }
 
     private func updateActionButtons() {
-        let enabled = selectedRecord() != nil
+        let enabled = !records(atRows: tableView.selectedNavigableRows).isEmpty
         restoreButton.isEnabled = enabled
         deletePermanentlyButton.isEnabled = enabled
     }
 
-    private func presentPersistenceFailure(error: Error) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "保存失败"
-        alert.informativeText = "\(error)"
-        alert.runModal()
-    }
 }
 
 extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
@@ -366,32 +359,32 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .groupHeader(_, let title, _):
             let cell = tableView.makeView(withIdentifier: Self.headerCellIdentifier, owner: self) as? GroupHeaderCellView
                 ?? GroupHeaderCellView(identifier: Self.headerCellIdentifier)
-            cell.configure(title: title, isCollapsed: false)
+            cell.configure(title: title, isCollapsed: false, showsDisclosure: false)
             cell.onToggle = nil
             cell.onBuildMenu = nil
             return cell
-        case .resolvedSectionHeader:
-            return nil
         case .record(let record):
             let cell = tableView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? RecordCellView
                 ?? RecordCellView(identifier: Self.cellIdentifier)
-            cell.configure(with: record, indented: true, style: .trash)
+            cell.configure(with: record, style: .trash)
             return cell
         }
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         switch rows[row] {
-        case .groupHeader, .resolvedSectionHeader: return Self.headerRowHeight
+        case .groupHeader: return Self.headerRowHeight
         case .record: return Self.rowHeight
         }
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        ListRowIndex.record(atTableRow: row, in: rows) != nil
+    func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposedSelectionIndexes: IndexSet) -> IndexSet {
+        IndexSet(proposedSelectionIndexes.filter { ListRowIndex.record(atTableRow: $0, in: rows) != nil })
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateActionButtons()
     }
+
+    var smokeAllowsMultipleSelection: Bool { tableView.allowsMultipleSelection }
 }

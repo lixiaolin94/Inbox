@@ -17,6 +17,14 @@ enum RecordSort: String, CaseIterable {
         }
     }
 
+    var chipTitle: String {
+        switch self {
+        case .newestFirst: return "Newest"
+        case .oldestFirst: return "Oldest"
+        case .priority: return "Priority"
+        }
+    }
+
     var sqlOrderClause: String {
         switch self {
         case .newestFirst:

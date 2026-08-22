@@ -36,8 +36,18 @@ targets:
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_KEY_NSHighResolutionCapable: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Inbox
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+      configs:
+        Release:
+          # Apple Silicon only: the x86_64 slice doubled the bundle (1.2 MB
+          # per arch) for machines this app is never run on.
+          ARCHS: arm64
+          # Size over speed: the hot paths are AppKit/SQLite, not our code;
+          # -Osize measured 639 KB vs 754 KB stripped with no visible cost.
+          SWIFT_OPTIMIZATION_LEVEL: "-Osize"
     # S6: CloudKit record-level sync (CKSyncEngine). aps-environment enables
     # the push notifications CKSyncEngine uses for remote change hints.
     entitlements:
@@ -63,20 +73,20 @@ targets:
       - path: Tests/InboxTests
       - path: Sources/Inbox
         includes:
-          - LaunchConfiguration.swift
-          - Preferences.swift
-          - Record.swift
-          - RecordStore.swift
-          - RecordStore+Sync.swift
-          - SQLiteDatabase.swift
-          - Project.swift
-          - ProjectStore.swift
-          - Scope.swift
-          - RecordSort.swift
-          - ListRow.swift
-          - RowFocus.swift
-          - SyncTypes.swift
-          - ConflictMerger.swift
+          - App/LaunchConfiguration.swift
+          - App/Preferences.swift
+          - Model/Record.swift
+          - Model/Project.swift
+          - Model/Scope.swift
+          - Model/RecordSort.swift
+          - Model/ListRow.swift
+          - Model/RowFocus.swift
+          - Storage/SQLiteDatabase.swift
+          - Storage/RecordStore.swift
+          - Storage/RecordStore+Sync.swift
+          - Storage/ProjectStore.swift
+          - Sync/SyncTypes.swift
+          - Sync/ConflictMerger.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.InboxTests

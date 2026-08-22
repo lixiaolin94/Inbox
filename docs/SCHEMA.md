@@ -1,6 +1,6 @@
 # Inbox 数据库 Schema
 
-本文档是 [PRD §16 开放数据承诺](../Inbox_macOS_MVP_PRD_v0.1.md)的兑现：Inbox 的本地数据格式是开放、可文档化、可被用户自己的脚本和 Agent 读取的。文档内容与 [`Sources/Inbox/RecordStore.swift`](../Sources/Inbox/RecordStore.swift)、[`Sources/Inbox/ProjectStore.swift`](../Sources/Inbox/ProjectStore.swift) 中的实际 schema 定义逐字段核对一致；如两者出现分歧，以代码为准。
+本文档是 [PRD §16 开放数据承诺](../Inbox_macOS_MVP_PRD_v0.1.md)的兑现：Inbox 的本地数据格式是开放、可文档化、可被用户自己的脚本和 Agent 读取的。文档内容与 [`Sources/Inbox/RecordStore.swift`](../Sources/Inbox/Storage/RecordStore.swift)、[`Sources/Inbox/ProjectStore.swift`](../Sources/Inbox/Storage/ProjectStore.swift) 中的实际 schema 定义逐字段核对一致；如两者出现分歧，以代码为准。
 
 数据库是单文件 SQLite，默认位置：
 
@@ -9,6 +9,8 @@
 ```
 
 `--ui-smoke` 启动参数会改用系统临时目录下的一次性文件（可用 `--db-path` 覆盖），不影响这个位置（见根目录 [`README.md`](../README.md)）。CKSyncEngine 的状态序列化默认在同一目录的 `ck-sync-state.json`；若指定了 `--db-path`，则写在该路径旁的 `<db-path>.ck-sync-state`。
+
+数据库以 WAL 模式运行（`PRAGMA journal_mode=WAL` + `synchronous=NORMAL`：写事务不再每次 fsync 主文件，读也不会被正在进行的写阻塞）。因此 Inbox 运行期间，旁边会出现 `inbox.sqlite-wal` 与 `inbox.sqlite-shm` 两个附属文件——它们是数据库的一部分，不要删除；Inbox 退出时 SQLite 会自动把 WAL 并回主文件并清理它们。外部只读工具照下文「外部读取指引」用 `?mode=ro` 打开即可，但 WAL 下的只读访问要求 `-shm` 文件可读写；做不到时（例如只拿到一份拷贝），改用 `immutable=1` 打开复制出来的快照。复制数据库时要把三个文件一起复制，或者先用 sqlite3 执行 `PRAGMA wal_checkpoint(TRUNCATE)` 把 WAL 并回主文件后再只复制 `inbox.sqlite`。
 
 ## 版本管理
 
@@ -97,7 +99,7 @@ CREATE VIRTUAL TABLE record_fts USING fts5(
 content LIKE '%term%' ESCAPE '\'
 ```
 
-原因（详见 [`RecordStore.swift`](../Sources/Inbox/RecordStore.swift) 顶部注释）：
+原因（详见 [`RecordStore.swift`](../Sources/Inbox/Storage/RecordStore.swift) 顶部注释）：
 
 1. FTS5 默认的 `unicode61` tokenizer 完全不切分中文——连续的 CJK 文本会被当成单个 token，导致子串 `MATCH` 永远无法命中；
 2. 即便换成 `trigram` tokenizer（当前建表用的就是它），查询词也必须 ≥ 3 个码点才能生效，这排除了非常常见的 1–2 个汉字搜索场景；
@@ -113,7 +115,7 @@ content LIKE '%term%' ESCAPE '\'
   sqlite3 'file:/Users/you/Library/Application Support/Inbox/inbox.sqlite?mode=ro'
   ```
 
-  或者先把文件复制一份副本再分析，两种方式都不会与正在运行的 Inbox 争抢锁。
+  或者先把文件复制一份副本再分析（WAL 模式下要连 `-wal`/`-shm` 一起复制，见文首），两种方式都不会与正在运行的 Inbox 争抢锁。
 
 - **不要在 Inbox 运行期间直接写入活动数据库**。这不是产品承诺的稳定写入协议：直接写库会绕过应用层的输入校验、`updated_at`/`resolved_at`/`deleted_at` 联动、FTS 镜像同步，以及未来的 CloudKit 同步与冲突处理逻辑（[PRD §16.2](../Inbox_macOS_MVP_PRD_v0.1.md)）。未来推荐的写入方式是稳定的 External Capture Interface / CLI / URL Scheme / App Intent，这些尚未实现。
 
