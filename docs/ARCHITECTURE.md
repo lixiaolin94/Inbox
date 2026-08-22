@@ -106,7 +106,8 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 
 | 现状自绘 | 为什么自绘 | 平台候选 / 复审方向 |
 |---|---|---|
-| `ScopeChipButton`（胶囊 chip：Scope Bar、"+"、底栏 Resolved/Sort/Trash、Trash 动作栏） | 选中态不改宽度、`refusesFirstResponder`、symbol 固定槽位、拖拽排序与 drop；**且实测比平台 accessory-bar `NSButton` 便宜**（首绘 −3…−15 ms/个、重绘 −2…−5 ms/个，按实例累加；HISTORY 性能基线 R7） | 已评估并否决替换（R7）。保留；只需跟随系统深浅色与尺寸对齐，不追求系统 bezel 样式 |
+| `RecordTableView.scrollRowToVisible`（重写）与显式行高（`RecordCellView.displayHeight`） | 行必须落在上下两条覆盖栏之间；行高与绘制同源、按内容缓存；见 CLAUDE.md 已知坑 R19 | 平台的自动行高与 scrollRowToVisible 在覆盖栏 + 重载场景下不可靠（R19 实测），保留 |
+| `ScopeChipButton`（`.capsule`：Scope Bar、"+"；`.filled` 圆角矩形：底栏 Resolved/Sort/Conflicts/Trash、Trash 动作栏）与 `HintBarView` 的键帽（SF Symbol 烘进 layer contents） | 选中态不改宽度、`refusesFirstResponder`、symbol 固定槽位、拖拽排序与 drop；**且实测比平台 accessory-bar `NSButton` 便宜**（首绘 −3…−15 ms/个、重绘 −2…−5 ms/个，按实例累加；HISTORY 性能基线 R7） | 已评估并否决替换（R7）。保留；只需跟随系统深浅色与尺寸对齐，不追求系统 bezel 样式 |
 | `GlassCapsuleView` | Liquid Glass 在 26+ 才有，需 fallback | 保留，但已是"平台组件 + fallback"形态；等最低版本升到 26 后直接用 `NSGlassEffectView` |
 | `GroupHeaderCellView` + 手工折叠状态 | All View 分组折叠 | 已评估并否决 `NSOutlineView`（R8 微基准：首绘 +8 ms、每次 reload +1.5 ms，只有折叠更快）。保留；折叠手感如需提升，改 `insertRows/removeRows` 局部更新 |
 | `RecordCellView` 的 Inline Edit（field editor 测量与行高） | 多行自适应编辑 | 保留；`NSTextField` 已是平台组件，自定义只在测量 |

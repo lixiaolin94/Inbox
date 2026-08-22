@@ -198,11 +198,15 @@ extension MainViewController {
         guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? RecordCellView else { return }
 
         editingRowIndex = row
+        editingRowHeight = nil
         cell.onEditingEnded = { [weak self] outcome in
             self?.handleInlineEditEnded(atRow: row, recordID: focused.id, originalContent: focused.content, outcome: outcome)
         }
-        cell.onEditingHeightChanged = { [weak self] in
-            guard let self, self.editingRowIndex == row else { return }
+        cell.onEditingHeightChanged = { [weak self, weak cell] in
+            guard let self, let cell, self.editingRowIndex == row else { return }
+            let height = cell.editingHeight
+            guard height != self.editingRowHeight else { return }
+            self.editingRowHeight = height
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0
                 self.tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
@@ -253,6 +257,7 @@ extension MainViewController {
     private func finishInlineEdit(atRow row: Int, returnFocus: Bool) {
         guard editingRowIndex == row else { return }
         editingRowIndex = nil
+        editingRowHeight = nil
         if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? RecordCellView {
             if let record = record(atTableRow: row) {
                 cell.configure(with: record, isConflicted: conflictPairIDs.contains(record.id))
@@ -261,15 +266,15 @@ extension MainViewController {
             cell.onEditingEnded = nil
             cell.onEditingHeightChanged = nil
         }
+        // Back to the display height (explicit heights shrink too), then
+        // reveal the row inside the bars. No reload: the list must not move.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            self.tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
+        }
         if returnFocus {
             returnFocusToRow(row)
         }
-        // The row grew with the editor's text. `noteHeightOfRows` (even after
-        // a single-row reload) never shrinks an automatic-height row back,
-        // so reload the table; selection is re-applied by index.
-        let selected = tableView.selectedRowIndexes
-        tableView.reloadData()
-        tableView.selectRowIndexes(selected, byExtendingSelection: false)
     }
 
     // MARK: - Move Record (PRD §8.7)

@@ -20,9 +20,10 @@ enum InlineEditOutcome {
 }
 
 /// View-based cell for a Record row: Priority label, wrapping Content
-/// that can switch into Inline Edit, and a weak relative-time label.
-/// Compact, no card, no buttons. Trash cells stay single-line (the Trash
-/// table pins row height at 28pt and does not use automatic row heights).
+/// that can switch into Inline Edit, and a weak date label. Compact, no
+/// card, no buttons. Trash cells stay single-line. Row heights are not
+/// automatic: the tables ask `displayHeight(for:style:tableWidth:)`, which
+/// measures with the same cell class the row draws with.
 final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     private let priorityLabel = FlushLabel(labelWithString: "")
     private let contentField = WrappingContentField()
@@ -261,14 +262,14 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
     private func applyMetrics(for style: RecordCellStyle) {
         let fontSize = Preferences.recordFontSize
-        let pad = style == .trash ? 6 : Preferences.recordVerticalPadding
+        let pad = Preferences.recordVerticalPadding
         priorityLabel.font = .monospacedDigitSystemFont(ofSize: fontSize, weight: .medium)
         timeLabel.font = .systemFont(ofSize: fontSize)
         priorityWidthConstraint.constant = style == .trash ? 0 : Self.priorityColumnWidth(fontSize: fontSize)
         timeWidthConstraint.constant = Self.timeColumnWidth(fontSize: fontSize)
         contentTopConstraint.constant = pad
         contentBottomLimit.constant = -pad
-        minHeightConstraint.constant = style == .trash ? 32 : Preferences.recordRowMinHeight
+        minHeightConstraint.constant = Preferences.recordRowMinHeight
     }
 
     private static func priorityColumnWidth(fontSize: CGFloat) -> CGFloat {
@@ -276,13 +277,94 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         return ceil(("P0" as NSString).size(withAttributes: [.font: font]).width) + 4
     }
 
+    // MARK: - Row height (explicit; ARCHITECTURE invariant 5)
+
+    /// Width the wrapping Content field gets in a cell `tableWidth` wide —
+    /// the same arithmetic as the constraints in `setUpViews` (text rail,
+    /// Priority column, 8pt gap | 10pt gap, time column, contentInset). The
+    /// UI smoke asserts a live cell's field width against this.
+    static func contentFieldWidth(tableWidth: CGFloat, style: RecordCellStyle = .regular) -> CGFloat {
+        let fontSize = Preferences.recordFontSize
+        let leading = Theme.Size.textRail + (style == .trash ? 0 : priorityColumnWidth(fontSize: fontSize) + 8)
+        let trailing = 10 + timeColumnWidth(fontSize: fontSize) + Theme.Size.contentInset
+        return max(1, tableWidth - leading - trailing)
+    }
+
+    /// Row height (without intercell spacing) for `record` at `tableWidth`:
+    /// the wrapped Content height plus both vertical pads, never under
+    /// `recordRowMinHeight`. Measured by the same `WrappingTextFieldCell`
+    /// the row draws with, so the row is exactly the cell's fitting height
+    /// and nothing clips. Cached per content at the current width; the
+    /// cache is dropped on a width change (bounded by the row count).
+    static func displayHeight(for record: Record, style: RecordCellStyle, tableWidth: CGFloat) -> CGFloat {
+        let pad = Preferences.recordVerticalPadding
+        let minHeight = Preferences.recordRowMinHeight
+        if style == .trash {
+            return max(minHeight, singleLineHeight + pad * 2)
+        }
+        let width = contentFieldWidth(tableWidth: tableWidth, style: style)
+        if width != heightCacheWidth {
+            heightCache.removeAll(keepingCapacity: true)
+            heightCacheWidth = width
+        }
+        if let cached = heightCache[record.content] { return cached }
+        let text: CGFloat
+        // One-line text needs no layout pass: the cell's own single-line
+        // height, as long as the glyphs clearly fit inside the field
+        // (NSTextFieldCell keeps 2pt at each side).
+        if !record.content.contains(where: \.isNewline),
+           (record.content as NSString).size(withAttributes: [.font: measuringFont]).width <= width - 8 {
+            text = singleLineHeight
+        } else {
+            text = measure(record.content, width: width)
+        }
+        let height = max(minHeight, text + pad * 2)
+        heightCache[record.content] = height
+        return height
+    }
+
+    private static var heightCache: [String: CGFloat] = [:]
+    private static var heightCacheWidth: CGFloat = -1
+    private static var measuringFont: NSFont { NSFont.systemFont(ofSize: Preferences.recordFontSize) }
+    private static let measuringCell: WrappingTextFieldCell = {
+        let cell = WrappingTextFieldCell(textCell: "")
+        cell.isEditable = false
+        cell.isBordered = false
+        cell.wraps = true
+        cell.isScrollable = false
+        cell.usesSingleLineMode = false
+        cell.lineBreakMode = .byWordWrapping
+        return cell
+    }()
+    /// What the cell reports for one line — measured, not derived from
+    /// font metrics, so the fast path and the layout path agree.
+    private static var singleLineHeight: CGFloat {
+        if let cached = singleLineHeightCache, cached.pointSize == Preferences.recordFontSize { return cached.height }
+        let height = measure("Xg", width: 1000)
+        singleLineHeightCache = (Preferences.recordFontSize, height)
+        return height
+    }
+    private static var singleLineHeightCache: (pointSize: CGFloat, height: CGFloat)?
+
+    private static func measure(_ content: String, width: CGFloat) -> CGFloat {
+        let cell = measuringCell
+        cell.font = measuringFont
+        cell.attributedStringValue = NSAttributedString(string: content, attributes: [.font: measuringFont])
+        return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: CGFloat.greatestFiniteMagnitude)).height
+    }
+
+    /// Fitting height while the field editor is up (the live text's wrapped
+    /// height plus pads); the owner returns it from `heightOfRow`.
+    var editingHeight: CGFloat { fittingSize.height }
+
     private static func timeColumnWidth(fontSize: CGFloat) -> CGFloat {
         let font = NSFont.systemFont(ofSize: fontSize)
         return ceil(("Sep 99, 9999" as NSString).size(withAttributes: [.font: font]).width)
     }
 
-    /// Trash keeps a 28pt row and clips; wrapping there fights the pinned
-    /// height. Main-list cells wrap so automatic row heights can grow.
+    /// Trash keeps a fixed single-line row and truncates; wrapping there
+    /// fights the pinned height. Main-list cells wrap so automatic row
+    /// heights can grow.
     private func applyWrapping(for style: RecordCellStyle) {
         if style == .trash {
             contentField.usesSingleLineMode = true
@@ -434,15 +516,11 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         return formatter
     }()
 
-    /// Day-granularity created-at: `Today`, `Yesterday`, `MMM d`, or
-    /// `MMM d, yyyy` when the year differs from `now`.
+    /// Created-at as a plain date: `MMM d`, or `MMM d, yyyy` when the year
+    /// differs from `now`. No Today/Yesterday — a date reads the same every
+    /// day and does not go stale overnight (R18).
     static func relativeTimeString(fromMillis milliseconds: Int64, now: Date = Date()) -> String {
         let date = Date(timeIntervalSince1970: Double(milliseconds) / 1000)
-        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) {
-            return "Yesterday"
-        }
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
         return (sameYear ? sameYearFormatter : otherYearFormatter).string(from: date)
     }
@@ -450,6 +528,8 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     // MARK: - UI smoke
 
     /// Wrap diagnostics: field width vs. the width the text was measured at.
+    var smokeFieldWidth: CGFloat { contentField.frame.width }
+
     var smokeWrapMetrics: String {
         let field = contentField.frame.width
         let measuredAtField = contentField.cell?.cellSize(forBounds: contentField.bounds).height ?? -1

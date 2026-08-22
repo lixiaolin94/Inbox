@@ -5,6 +5,8 @@ import AppKit
 /// or first responder, so it sits beside the chips without changing what
 /// Universal Input or the list sees.
 final class HintBarView: NSView {
+    /// `key` is the keyboard glyph as text ("↵", "esc"); the cap draws the
+    /// matching SF Symbol when there is one and falls back to the text.
     typealias Hint = (key: String, action: String)
 
     private let stack = NSStackView()
@@ -65,28 +67,61 @@ final class HintBarView: NSView {
 
 /// The key glyph in an 18 pt rounded rect: `Ink.selection` fill,
 /// `Ink.outline` stroke, resolved under the effective appearance in
-/// `updateLayer`.
+/// `updateLayer`. Glyphs are SF Symbols (text-drawn arrows look like
+/// fallback glyphs next to the system font); "esc" stays a word — the ⎋
+/// symbol is not widely read.
 private final class KeyCapView: NSView {
-    private let label: NSTextField
+    private static let height: CGFloat = 18
+    private static let symbols: [String: String] = [
+        "↵": "return",
+        "␣": "space",
+        "⌫": "delete.left",
+        "↓": "arrow.down",
+        "↑": "arrow.up"
+    ]
+    private static let symbolConfiguration = NSImage.SymbolConfiguration(
+        pointSize: Theme.Typography.keyCap.pointSize, weight: .semibold
+    )
+
+    private let glyph = CALayer()
+    private let symbol: NSImage?
+    private let slot: NSSize
 
     init(key: String) {
-        label = NSTextField(labelWithString: key)
+        symbol = Self.symbols[key].flatMap {
+            NSImage(systemSymbolName: $0, accessibilityDescription: key)?.withSymbolConfiguration(Self.symbolConfiguration)
+        }
+        if let symbol {
+            slot = NSSize(width: ceil(symbol.size.width), height: ceil(symbol.size.height))
+        } else {
+            slot = .zero
+        }
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = Theme.Radius.keyCap
+        layer?.cornerRadius = Theme.Radius.control
         layer?.borderWidth = 1
-        label.font = Theme.Typography.keyCap
-        label.textColor = Theme.Ink.tertiary
-        label.refusesFirstResponder = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
         translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 18),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.sm),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.sm),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
+        if symbol != nil {
+            glyph.contentsGravity = .center
+            layer?.addSublayer(glyph)
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(equalToConstant: Self.height),
+                widthAnchor.constraint(equalToConstant: max(Self.height, slot.width + Theme.Spacing.sm * 2))
+            ])
+        } else {
+            let label = NSTextField(labelWithString: key)
+            label.font = Theme.Typography.keyCap
+            label.textColor = Theme.Ink.tertiary
+            label.refusesFirstResponder = true
+            label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(label)
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(equalToConstant: Self.height),
+                label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.sm),
+                label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.sm),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor)
+            ])
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -95,8 +130,19 @@ private final class KeyCapView: NSView {
 
     override var wantsUpdateLayer: Bool { true }
 
+    override func layout() {
+        super.layout()
+        glyph.frame = bounds
+        glyph.contentsScale = window?.backingScaleFactor ?? 2
+    }
+
     override func updateLayer() {
         layer?.backgroundColor = Theme.Chip.resolved(Theme.Ink.selection)
         layer?.borderColor = Theme.Chip.resolved(Theme.Ink.outline)
+        if let symbol {
+            // Tint is baked under the current appearance; updateLayer runs
+            // again on appearance change, so the contents never go stale.
+            glyph.contents = symbol.tinted(Theme.Ink.tertiary, centeredIn: slot)
+        }
     }
 }

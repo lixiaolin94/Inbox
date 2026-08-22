@@ -51,7 +51,7 @@ final class GroupHeaderCellView: NSTableCellView {
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(
                 lessThanOrEqualTo: trailingAnchor,
-                constant: -(Theme.Size.contentInset + Theme.Size.disclosureSize + Theme.Spacing.md + Theme.Size.disclosureNudge)
+                constant: -(Theme.Size.windowInset + Theme.Size.disclosureSize + Theme.Spacing.md + Theme.Size.disclosureNudge)
             )
         ])
     }
@@ -63,7 +63,9 @@ final class GroupHeaderCellView: NSTableCellView {
             titleLeadingConstraint.constant = leading
         }
         let size = Theme.Size.disclosureSize
-        let trailingPad = -Theme.Size.trailingConstant(for: self) + Theme.Size.disclosureNudge
+        // Under the "+" chip's centre: the chip is chrome, so measure from
+        // the window ring, not the list rail.
+        let trailingPad = -Theme.Size.trailingConstant(for: self, inset: Theme.Size.windowInset) + Theme.Size.disclosureNudge
         disclosureView.frame = NSRect(
             x: bounds.width - trailingPad - size,
             y: ((bounds.height - size) / 2).rounded(.toNearestOrAwayFromZero),

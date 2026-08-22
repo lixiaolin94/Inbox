@@ -1,7 +1,9 @@
 import AppKit
 
-/// Capsule chip: 1pt stroke when idle, ink-selection fill when selected.
-/// Font weight is constant so selecting a chip does not change its width.
+/// Chip button in two styles (`Theme.Chip.Style`): the Scope Bar capsule —
+/// 1pt stroke when idle, ink-selection fill when selected — and the filled
+/// rounded rect used by the utility / Trash action bars. Font weight is
+/// constant so selecting a chip does not change its width.
 ///
 /// `refusesFirstResponder = true` is the load-bearing bit: clicking a chip
 /// must switch Scope without stealing first responder away from Universal
@@ -16,6 +18,13 @@ final class ScopeChipButton: NSButton {
     var onDropRecords: (([String]) -> Void)?
     /// "+" uses a square capsule so it reads as an icon button.
     var prefersSquare = false
+    var style: Theme.Chip.Style = .capsule {
+        didSet {
+            guard style != oldValue else { return }
+            needsLayout = true
+            applyAppearance()
+        }
+    }
     /// Leading SF Symbol before the title. Always drawn in the outlined idle
     /// style; state is conveyed by swapping the symbol, not by filling.
     var symbolName: String? {
@@ -70,12 +79,12 @@ final class ScopeChipButton: NSButton {
     /// handful of symbols x 2 states x 2-3 appearances — no eviction needed.
     private static var tintedSymbols: [String: NSImage] = [:]
 
-    private static func tintedSymbol(_ name: String, enabled: Bool, in appearance: NSAppearance) -> NSImage? {
-        let key = "\(name)|\(enabled ? "enabled" : "disabled")|\(appearance.name.rawValue)"
+    private static func tintedSymbol(_ name: String, ink: NSColor, inkKey: String, in appearance: NSAppearance) -> NSImage? {
+        let key = "\(name)|\(inkKey)|\(appearance.name.rawValue)"
         if let cached = tintedSymbols[key] { return cached }
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)) else { return nil }
-        let tinted = symbol.tinted(enabled ? Theme.Ink.primary : Theme.Ink.tertiary, centeredIn: symbolSlot)
+        let tinted = symbol.tinted(ink, centeredIn: symbolSlot)
         tintedSymbols[key] = tinted
         return tinted
     }
@@ -195,7 +204,7 @@ final class ScopeChipButton: NSButton {
 
     override func layout() {
         super.layout()
-        layer?.cornerRadius = max(bounds.height, 1) / 2
+        layer?.cornerRadius = style == .capsule ? max(bounds.height, 1) / 2 : Theme.Radius.control
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -204,12 +213,18 @@ final class ScopeChipButton: NSButton {
     }
 
     func applyAppearance() {
-        let highlighted = symbolName == nil && (isSelectedScope || isDropHighlighted)
-        let color: NSColor = isEnabled ? Theme.Ink.primary : Theme.Ink.tertiary
+        // Symbol chips convey state by swapping the glyph (eye / eye.slash);
+        // filled buttons can carry both, so the fill follows the state there.
+        let highlighted = (symbolName == nil || style == .filled) && (isSelectedScope || isDropHighlighted)
+        let (color, inkKey): (NSColor, String) = switch (isEnabled, style) {
+        case (false, _): (Theme.Ink.tertiary, "tertiary")
+        case (true, .plain): (Theme.Ink.secondary, "secondary")
+        case (true, _): (Theme.Ink.primary, "primary")
+        }
         let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: Theme.Typography.chip]
         let composed = NSMutableAttributedString()
         if let symbolName,
-           let symbol = Self.tintedSymbol(symbolName, enabled: isEnabled, in: effectiveAppearance) {
+           let symbol = Self.tintedSymbol(symbolName, ink: color, inkKey: inkKey, in: effectiveAppearance) {
             // Inline attachment keeps the glyph on the title's text rail
             // instead of NSButton's separate image slot.
             let attachment = NSTextAttachment()
@@ -226,7 +241,7 @@ final class ScopeChipButton: NSButton {
         invalidateIntrinsicContentSize()
         alphaValue = isEnabled ? 1 : 0.45
         if let layer {
-            Theme.Chip.paint(layer, selected: highlighted, in: effectiveAppearance)
+            Theme.Chip.paint(layer, style: style, selected: highlighted, in: effectiveAppearance)
         }
     }
 
@@ -266,7 +281,9 @@ private final class ScopeChipButtonCell: NSButtonCell {
     }
 }
 
-private extension NSImage {
+extension NSImage {
+    /// Bakes `color` into the glyph, centred in `slot` (scaled down if
+    /// larger). Shared by chips and key caps; re-bake on appearance change.
     func tinted(_ color: NSColor, centeredIn slot: NSSize) -> NSImage {
         let glyph = size
         let result = NSImage(size: slot, flipped: false) { rect in

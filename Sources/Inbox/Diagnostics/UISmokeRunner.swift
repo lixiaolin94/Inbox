@@ -154,9 +154,7 @@ enum UISmokeRunner {
         pump()
         let input = controller.smokeInputFrame
         try assertClose(input.height, Theme.Size.inputHeight, "input chrome height")
-        if input.minX < 12 {
-            throw SmokeFailure("input should float inset from the leading edge, got x=\(input.minX)")
-        }
+        try assertClose(input.minX, Theme.Size.windowInset, "input floats windowInset from the leading edge")
         if abs(input.width - (controller.view.bounds.width - input.minX * 2)) > 2 {
             throw SmokeFailure("input should keep matching side insets, frame=\(input) view=\(controller.view.bounds)")
         }
@@ -398,6 +396,59 @@ enum UISmokeRunner {
             throw SmokeFailure("last row should scroll clear of the utility bar, clearance \(endClearance.bottom)")
         }
 
+        // Edit-commit on the last row must not scroll it under the bar
+        // (R19 bug: the reload after commit left the list one row up).
+        try sendReturn(window: window)
+        try waitUntil(showing: "inline edit began on the last row") { controller.smokeIsEditingRecord(id: lastID) }
+        try sendReturn(window: window)
+        try waitUntil(showing: "inline edit committed on the last row") {
+            !controller.smokeIsEditingRecord(id: lastID) && controller.smokeIsTableFirstResponder()
+                && controller.smokeSelectedRecord?.id == lastID
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        pump()
+        func assertInBand(_ id: String, _ label: String) throws {
+            controller.view.layoutSubtreeIfNeeded()
+            pump()
+            guard let clearance = controller.smokeRowClearance(forRecordID: id) else {
+                throw SmokeFailure("\(label): focused row missing")
+            }
+            if clearance.bottom < insets.bottom - 0.5 || clearance.top < insets.top - 0.5 {
+                throw SmokeFailure("\(label): focused row should sit between the bars, clearance top \(clearance.top) bottom \(clearance.bottom)")
+            }
+        }
+        try assertInBand(lastID, "after edit commit on the last row")
+
+        // Resolve on the last row: it leaves the list, focus inherits the
+        // new last row, which must also sit inside the band; ⌘Z restores.
+        let visibleBeforeResolve = controller.smokeVisibleRecords
+        try sendSpecial(keyCode: KeyCode.space, characters: " ", window: window)
+        try waitUntil(showing: "last row resolved and gone") {
+            !controller.smokeVisibleRecords.contains { $0.id == lastID } && controller.smokeSelectedRecord != nil
+        }
+        guard let afterResolveID = controller.smokeSelectedRecord?.id else { throw SmokeFailure("no focus after resolve") }
+        try assertEqual(afterResolveID, visibleBeforeResolve[visibleBeforeResolve.count - 2].id, "focus inherits the previous row after resolving the last")
+        try assertInBand(afterResolveID, "after resolving the last row")
+        try sendCommand("z", keyCode: KeyCode.z, window: window)
+        try waitUntil(showing: "⌘Z reopened the last row") { controller.smokeVisibleRecords.contains { $0.id == lastID } }
+
+        // Trash on the last row, same rule; ⌘Z restores.
+        controller.focusInputAtEnd()
+        for _ in 0..<probes.count {
+            try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        }
+        try waitUntil(showing: "↓ back on the last row") { controller.smokeSelectedRecord?.id == lastID }
+        try sendSpecial(keyCode: KeyCode.delete, characters: "\u{7f}", window: window)
+        try waitUntil(showing: "last row trashed") {
+            !controller.smokeVisibleRecords.contains { $0.id == lastID } && controller.smokeSelectedRecord != nil
+        }
+        guard let afterTrashID = controller.smokeSelectedRecord?.id else { throw SmokeFailure("no focus after trash") }
+        try assertInBand(afterTrashID, "after trashing the last row")
+        try sendCommand("z", keyCode: KeyCode.z, window: window)
+        try waitUntil(showing: "⌘Z restored the last row") { controller.smokeVisibleRecords.contains { $0.id == lastID } }
+        try waitUntil(showing: "search settled after undo") { controller.smokeSearchSettled }
+
         for _ in 0..<(probes.count - 1) {
             try sendArrow(.upArrow, keyCode: KeyCode.upArrow, window: window)
         }
@@ -439,10 +490,19 @@ enum UISmokeRunner {
             }
             let frame = controller.smokeUtilityControlFrame(chip)
             try assertClose(frame.height, Theme.Size.chipHeight, "\(label) chip height")
-            try assertClose(frame.midY, bar.midY, "\(label) chip centred in the utility bar")
+            // Same air below the buttons as beside them (ui.md §5).
+            try assertClose(frame.minY - bar.minY, Theme.Size.windowInset, "\(label) chip sits windowInset off the bottom edge")
+            // Bar buttons are filled rounded rects, not Scope Bar capsules
+            // (ui.md §5): radius is the control token, no stroke.
+            if chip.style != .filled {
+                throw SmokeFailure("\(label) chip should use the filled style")
+            }
+            chip.layoutSubtreeIfNeeded()
+            try assertClose(chip.layer?.cornerRadius ?? -1, Theme.Radius.control, "\(label) chip corner radius")
+            try assertClose(chip.layer?.borderWidth ?? -1, 0, "\(label) chip has no stroke")
         }
         let resolvedFrame = controller.smokeUtilityControlFrame(resolved)
-        try assertClose(resolvedFrame.minX, Theme.Size.contentInset, "resolved chip leading on the chip rail")
+        try assertClose(resolvedFrame.minX, Theme.Size.windowInset, "resolved chip leading on the chip rail")
         try assertClose(
             controller.smokeUtilityControlFrame(sort).minX,
             resolvedFrame.maxX + Theme.Size.chipSpacing,
@@ -505,7 +565,13 @@ enum UISmokeRunner {
         for chip in actions where !chip.refusesFirstResponder {
             throw SmokeFailure("\(chip.chipTitle) must refuse first responder")
         }
-        try assertEqual(controller.smokeTrashHintTexts, ["↵ Restore", "⌫ Delete", "esc Back"], "trash action bar hints")
+        for chip in actions where chip.style != .filled {
+            throw SmokeFailure("\(chip.chipTitle) should use the filled style")
+        }
+        if controller.smokeTrashBackChip.style != .plain {
+            throw SmokeFailure("trash Back should be the plain style")
+        }
+        try assertEqual(controller.smokeTrashBackChip.symbolName, "chevron.left", "trash back chip glyph")
 
         // Key hints (ui.md §5): trailing on the rail, following the focus
         // state, never taking the mouse or first responder.
@@ -515,8 +581,8 @@ enum UISmokeRunner {
         guard let hintFrame = controller.smokeHintBarFrame else {
             throw SmokeFailure("hint bar should fit at \(bar.width)pt")
         }
-        try assertClose(bar.width - hintFrame.maxX, Theme.Size.contentInset, "hint bar trailing on the chip rail")
-        try assertClose(hintFrame.midY, bar.midY, "hint bar centred in the utility bar")
+        try assertClose(bar.width - hintFrame.maxX, Theme.Size.windowInset, "hint bar trailing on the chip rail")
+        try assertClose(hintFrame.midY, resolvedFrame.midY, "hint bar on the buttons' centre line")
         if hintFrame.minX < controller.smokeFunctionGroupMaxX + Theme.Spacing.xl - 0.5 {
             throw SmokeFailure("hint bar should sit Spacing.xl clear of the function group, frame=\(hintFrame)")
         }
@@ -529,7 +595,7 @@ enum UISmokeRunner {
         try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
         try waitUntil(showing: "row hints after ↓") {
             controller.smokeIsTableFirstResponder()
-                && Array(controller.smokeHintTexts.prefix(3)) == ["↵ Edit", "␣ Resolve", "⌫ Trash"]
+                && controller.smokeHintTexts == ["↵ Edit", "␣ Resolve"]
         }
         controller.focusInputAtEnd()
         try waitUntil(showing: "input hints restored") { controller.smokeHintTexts == ["↵ Create", "↓ List"] }
@@ -545,12 +611,12 @@ enum UISmokeRunner {
         pump()
         let narrowBar = controller.smokeUtilityBarFrame
         let needed = controller.smokeFunctionGroupMaxX + Theme.Spacing.xl
-            + controller.smokeHintBarFittingWidth + Theme.Size.contentInset
+            + controller.smokeHintBarFittingWidth + Theme.Size.windowInset
         if let frame = controller.smokeHintBarFrame {
             if needed > narrowBar.width + 0.5 {
                 throw SmokeFailure("hint bar shown at \(narrowBar.width)pt though it needs \(needed)pt")
             }
-            try assertClose(narrowBar.width - frame.maxX, Theme.Size.contentInset, "hint bar trailing on the rail at minimum width")
+            try assertClose(narrowBar.width - frame.maxX, Theme.Size.windowInset, "hint bar trailing on the rail at minimum width")
         } else if needed <= narrowBar.width {
             throw SmokeFailure("hint bar hidden at \(narrowBar.width)pt though \(needed)pt fits")
         }
@@ -592,7 +658,11 @@ enum UISmokeRunner {
             controller.smokeUtilityControlFrame(controller.smokeSortChip).maxX + Theme.Size.chipSpacing,
             "conflicts chip follows sort at chipSpacing"
         )
-        try assertClose(chipFrame.midY, controller.smokeUtilityBarFrame.midY, "conflicts chip centred in the utility bar")
+        try assertClose(
+            chipFrame.midY,
+            controller.smokeUtilityControlFrame(controller.smokeSortChip).midY,
+            "conflicts chip on the function group's centre line"
+        )
         try assertEqual(chip.symbolName, "exclamationmark.triangle", "conflicts chip symbol")
         for record in [original, duplicate] where !controller.smokeIsConflictBadgeShown(forRecordID: record.id) {
             throw SmokeFailure("'\(record.content)' should carry the Conflict badge")
@@ -833,7 +903,10 @@ enum UISmokeRunner {
         guard let recordX = controller.smokeFirstRecordPriorityMinX else {
             throw SmokeFailure("record cell should exist after first create")
         }
-        if let allTitleX = controller.smokeAllTitleMinX {
+        // The list's text rail is its own token (`contentInset`-based); it
+        // coincides with All's letters only while contentInset == windowInset.
+        try assertClose(recordX, Theme.Size.textRail, "priority text on the list text rail", tolerance: 2)
+        if Theme.Size.contentInset == Theme.Size.windowInset, let allTitleX = controller.smokeAllTitleMinX {
             try assertClose(recordX, allTitleX + Theme.Size.listTextNudge, "priority text aligns with All text", tolerance: 2)
         }
         if let timeGap = controller.smokeFirstRecordTimeTrailingGap {
@@ -1189,12 +1262,26 @@ enum UISmokeRunner {
             controller.smokeVisibleRecords.count == openCount
         }
 
+        // Trash rows are laid out by the same cell and gap as the main list:
+        // a single-line row there is exactly as tall as one here.
+        let shortest = controller.smokeVisibleRecords.min { $0.content.count < $1.content.count }
+        let mainRowHeight = shortest.flatMap { controller.smokeRowHeight(forRecordID: $0.id) }
         controller.smokeOpenTrash()
         try waitUntil(showing: "Trash surface listing the trashed records") {
             controller.smokeIsShowingTrash && controller.smokeTrashTableIsFirstResponder
                 && ((window.firstResponder as? NSTableView)?.numberOfRows ?? 0) >= 2
         }
-        try eachVariant { try render("trash-default-\($0)") }
+        guard let mainRowHeight, let trashRowHeight = controller.smokeTrashRowHeight else {
+            throw SmokeFailure("row heights should be measurable on both surfaces")
+        }
+        try assertClose(trashRowHeight, mainRowHeight, "trash row height matches a single-line main row")
+        try eachVariant {
+            // The width change re-measures rows; the selection must survive it.
+            if (window.firstResponder as? NSTableView)?.selectedRow ?? -1 < 0 {
+                throw SmokeFailure("Trash selection lost after resizing to \($0)")
+            }
+            try render("trash-default-\($0)")
+        }
         try sendSpecial(keyCode: KeyCode.escape, characters: "\u{1b}", window: window)
         try waitUntil(showing: "main surface back after the Trash snapshots") {
             !controller.smokeIsShowingTrash && controller.smokeIsInputFirstResponder()
@@ -1203,13 +1290,23 @@ enum UISmokeRunner {
         window.appearance = NSAppearance(named: .aqua)
         setSnapshotFrame(window: window, width: 720)
         // Leaving Trash re-runs the search asynchronously; ↓ must not race
-        // an empty list.
-        try waitUntil(showing: "list reloaded after leaving Trash") { !controller.smokeVisibleRecords.isEmpty }
+        // its completion (the stale list is non-empty, so wait on the
+        // search itself — its reload would otherwise clear the selection).
+        try waitUntil(showing: "search settled after leaving Trash") {
+            controller.smokeSearchSettled && !controller.smokeVisibleRecords.isEmpty
+        }
         controller.focusInputAtEnd()
         try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
         try waitUntil(showing: "first record selected for the Row Focus snapshot") {
             controller.smokeIsTableFirstResponder() && controller.smokeSelectedRecord != nil
         }
+        // Row Focus survives a width change (rows are re-measured without
+        // a full reload — see RecordTableView.reloadKeepingSelection).
+        let focusedBeforeResize = controller.smokeSelectedRecord?.id
+        setSnapshotFrame(window: window, width: 1100)
+        try assertEqual(controller.smokeSelectedRecord?.id, focusedBeforeResize, "Row Focus kept across a window resize")
+        setSnapshotFrame(window: window, width: 720)
+        try assertEqual(controller.smokeSelectedRecord?.id, focusedBeforeResize, "Row Focus kept after resizing back")
         try render("main-rowfocus-aqua-720")
         // Creation timestamps can tie at millisecond resolution, so the
         // wrapped record is not guaranteed to be the first row: walk to it.
@@ -1258,6 +1355,9 @@ enum UISmokeRunner {
         pump()
         pump()
         if let wrapRecordID {
+            if let widths = controller.smokeFieldWidths(forRecordID: wrapRecordID) {
+                try assertClose(widths.live, widths.assumed, "\(name): content field width matches the height measurement's width")
+            }
             writeLine("WRAP \(name): \(controller.smokeWrapMetrics(forRecordID: wrapRecordID) ?? "-")")
             writeLine("DISSOLVE \(name): \(controller.smokeDissolveDebug)")
         }

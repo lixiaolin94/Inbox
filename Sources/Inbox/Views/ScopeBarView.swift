@@ -10,7 +10,7 @@ final class ScopeBarView: NSView {
     var onBuildProjectMenu: ((String) -> NSMenu?)?
     var onDropRecords: (([String], String?) -> Void)?
 
-    static var chipRowInset: CGFloat { Theme.Size.contentInset }
+    static var chipRowInset: CGFloat { Theme.Size.windowInset }
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
@@ -86,7 +86,7 @@ final class ScopeBarView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -Theme.Size.chipSpacing),
 
-            addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.contentInset),
+            addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.windowInset),
             addButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),

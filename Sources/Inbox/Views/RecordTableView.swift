@@ -47,40 +47,79 @@ final class RecordTableView: NSTableView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
-    /// Automatic row heights are measured at the width the row first had;
-    /// AppKit does not re-measure on a width change, and `noteHeightOfRows`
-    /// only ever grows a row (HISTORY R4), so a wrapped row kept a stale
-    /// height after a resize (pixel snapshots: 3 lines in a 5-line row).
-    /// A full reload re-measures at the new width in both directions; the
-    /// cheap grow-only note keeps live resize fluid, the reload lands when
-    /// it ends. Height-only changes must not re-enter, hence the guard.
+    /// Row heights are explicit (`heightOfRow` asks `RecordCellView`), so a
+    /// width change only needs a `noteHeightOfRows`: exact, shrinks as well
+    /// as grows, and touches neither the selection nor the scroll offset.
+    /// During live resize only the visible rows are re-asked (the rest
+    /// catch up when it ends) so a long list stays fluid.
     override func setFrameSize(_ newSize: NSSize) {
         let widthChanged = abs(newSize.width - frame.width) > 0.5
         super.setFrameSize(newSize)
-        guard widthChanged, usesAutomaticRowHeights, numberOfRows > 0 else { return }
-        if inLiveResize {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0
-                self.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<self.numberOfRows))
-            }
-        } else {
-            reloadKeepingSelection()
-        }
+        guard widthChanged, numberOfRows > 0 else { return }
+        // `setFrameSize` runs inside the table's own tiling; re-asking the
+        // delegate from there is the "reentrant operation" AppKit warns
+        // about, so the note lands on the next run-loop turn (coalesced).
+        scheduleHeightNote(visibleOnly: inLiveResize)
     }
 
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        if usesAutomaticRowHeights, numberOfRows > 0 {
-            reloadKeepingSelection()
+        if numberOfRows > 0 {
+            scheduleHeightNote(visibleOnly: false)
         }
     }
 
-    private func reloadKeepingSelection() {
-        let selected = selectedRowIndexes
-        reloadData()
-        if !selected.isEmpty {
-            selectRowIndexes(selected, byExtendingSelection: false)
+    private var pendingHeightNote: Bool?
+    private func scheduleHeightNote(visibleOnly: Bool) {
+        if let pending = pendingHeightNote {
+            pendingHeightNote = pending && visibleOnly
+            return
         }
+        pendingHeightNote = visibleOnly
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let visibleOnly = self.pendingHeightNote else { return }
+            self.pendingHeightNote = nil
+            guard self.numberOfRows > 0 else { return }
+            let rows = visibleOnly
+                ? IndexSet(integersIn: Range(self.rows(in: self.visibleRect)) ?? 0..<0)
+                : IndexSet(integersIn: 0..<self.numberOfRows)
+            guard !rows.isEmpty else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                self.noteHeightOfRows(withIndexesChanged: rows)
+            }
+        }
+    }
+
+    /// Scroll rule for every "reveal this row" path (↑↓, focus return after
+    /// Resolve / Trash / edit commit, search results): the row must end
+    /// fully inside the band between the bars — `contentInsets` of the
+    /// enclosing scroll view — not merely inside the clip view, whose
+    /// bounds include the bar zones the dissolve hides. Moves the minimum
+    /// distance and never scrolls when the row is already in the band.
+    override func scrollRowToVisible(_ row: Int) {
+        guard row >= 0, row < numberOfRows,
+              let scrollView = enclosingScrollView else {
+            super.scrollRowToVisible(row)
+            return
+        }
+        let clip = scrollView.contentView
+        let insets = scrollView.contentInsets
+        let rowRect = rect(ofRow: row)
+        let visible = clip.documentVisibleRect
+        let bandMinY = visible.minY + insets.top
+        let bandMaxY = visible.maxY - insets.bottom
+        var origin = clip.bounds.origin
+        if rowRect.minY < bandMinY {
+            origin.y -= bandMinY - rowRect.minY
+        } else if rowRect.maxY > bandMaxY {
+            origin.y += rowRect.maxY - bandMaxY
+        } else {
+            return
+        }
+        let constrained = clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin
+        clip.scroll(to: constrained)
+        scrollView.reflectScrolledClipView(clip)
     }
 
     /// AppKit still insets the cell inside the row (~6pt) even with

@@ -62,6 +62,9 @@ final class MainViewController: NSViewController {
     /// Bumped by every search and by Inline Edit, so a stale completion can
     /// never reload the table out from under the user.
     var searchGeneration = 0
+    /// Generation of the last search whose completion was applied; equals
+    /// `searchGeneration` when nothing is in flight (smoke waits on it).
+    private(set) var settledSearchGeneration = 0
 
     /// Source of truth for search range and Create target (PRD §6.6).
     /// Read by AppDelegate to draw the Go menu's checkmark.
@@ -86,6 +89,9 @@ final class MainViewController: NSViewController {
     var editingRowIndex: Int? {
         didSet { refreshHints() }
     }
+    /// Fitting height of the row being edited, updated on every keystroke
+    /// (`RecordCellView.onEditingHeightChanged`); read by `heightOfRow`.
+    var editingRowHeight: CGFloat?
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("RecordCell")
     private static let headerCellIdentifier = NSUserInterfaceItemIdentifier("GroupHeaderCell")
@@ -214,7 +220,11 @@ final class MainViewController: NSViewController {
         // the same window x as the chip.
         tableView.style = .fullWidth
         tableView.rowSizeStyle = .custom
-        tableView.usesAutomaticRowHeights = true
+        // Explicit heights (see heightOfRow): automatic row heights reset
+        // every row to an estimate on reloadData and re-measure lazily,
+        // which jumped the scroll offset, never shrank a row, and dropped
+        // the selection on resize (R19).
+        tableView.usesAutomaticRowHeights = false
         tableView.rowHeight = Preferences.recordRowMinHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 6)
         tableView.selectionHighlightStyle = .regular
@@ -306,6 +316,7 @@ final class MainViewController: NSViewController {
         functionGroup.spacing = Theme.Size.chipSpacing
         functionGroup.translatesAutoresizingMaskIntoConstraints = false
         for chip in [resolvedChip, sortChip, conflictsChip, trashButton] {
+            chip.style = .filled
             functionGroup.addArrangedSubview(chip)
         }
 
@@ -321,11 +332,12 @@ final class MainViewController: NSViewController {
         utilityBar.addSubview(hintGroup)
 
         NSLayoutConstraint.activate([
-            functionGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.contentInset),
-            functionGroup.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+            functionGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.windowInset),
+            functionGroup.bottomAnchor.constraint(equalTo: utilityBar.bottomAnchor, constant: -Theme.Size.windowInset),
 
-            hintGroup.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.contentInset),
-            hintGroup.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+            // Hints follow the buttons' centre line, not the bar's.
+            hintGroup.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.windowInset),
+            hintGroup.centerYAnchor.constraint(equalTo: functionGroup.centerYAnchor),
             hintGroup.leadingAnchor.constraint(greaterThanOrEqualTo: functionGroup.trailingAnchor, constant: Theme.Spacing.xl)
         ])
     }
@@ -336,12 +348,12 @@ final class MainViewController: NSViewController {
 
     /// Key hints follow the focus state (ui.md §5). Derived from first
     /// responder and `editingRowIndex` at every focus move, never stored.
+    /// Two per state at most: Priority and Trash are deliberately unlisted.
     func refreshHints() {
-        let rowFocus: [HintBarView.Hint] = [("↵", "Edit"), ("␣", "Resolve"), ("⌫", "Trash")]
         if editingRowIndex != nil {
             hintTiers = [[("↵", "Save"), ("esc", "Cancel")]]
         } else if view.window?.firstResponder === tableView {
-            hintTiers = [rowFocus + [("←→", "Priority")], rowFocus]
+            hintTiers = [[("↵", "Edit"), ("␣", "Resolve")]]
         } else {
             hintTiers = [[("↵", "Create"), ("↓", "List")]]
         }
@@ -354,7 +366,7 @@ final class MainViewController: NSViewController {
     /// fitting sizes and the view width rather than subview frames, which
     /// are a layout pass behind in `viewDidLayout`.
     private func fitHints() {
-        var reserved = Theme.Size.contentInset + functionGroup.fittingSize.width + Theme.Spacing.xl + Theme.Size.contentInset
+        var reserved = Theme.Size.windowInset + functionGroup.fittingSize.width + Theme.Spacing.xl + Theme.Size.windowInset
         if !offlineNoticeLabel.isHidden {
             reserved += offlineNoticeLabel.fittingSize.width + Theme.Spacing.md
         }
@@ -438,8 +450,8 @@ final class MainViewController: NSViewController {
 
         NSLayoutConstraint.activate([
             universalInput.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.md),
-            universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: Theme.Size.contentInset),
-            universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -Theme.Size.contentInset),
+            universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: Theme.Size.windowInset),
+            universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -Theme.Size.windowInset),
             universalInput.heightAnchor.constraint(equalToConstant: Theme.Size.inputHeight),
 
             scrollView.topAnchor.constraint(equalTo: universalInput.bottomAnchor, constant: Theme.Spacing.md),
@@ -568,6 +580,7 @@ final class MainViewController: NSViewController {
             onlyConflicts: showOnlyConflicts
         ) { [weak self] result, token in
             guard let self, token == self.searchGeneration else { return }
+            self.settledSearchGeneration = token
             if case .success(let records) = result {
                 self.records = records
                 self.rebuildRowsAndReload()
@@ -734,6 +747,22 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         ClearTableRowView.dequeue(in: tableView)
+    }
+
+    /// Exact row heights from the cell's own measurement; the row being
+    /// edited follows its field editor instead.
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        switch rows[row] {
+        case .groupHeader:
+            return Theme.Size.groupHeaderHeight
+        case .record(let record):
+            // Asking the table for the cell here would re-enter the delegate;
+            // the editing height is pushed in by the cell instead.
+            if row == editingRowIndex, let editingRowHeight, editingRowHeight > 0 {
+                return editingRowHeight
+            }
+            return RecordCellView.displayHeight(for: record, style: .regular, tableWidth: tableView.bounds.width)
+        }
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

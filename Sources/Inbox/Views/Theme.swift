@@ -17,7 +17,8 @@ enum Theme {
     enum Radius {
         static let input: CGFloat = 12
         static let row: CGFloat = 10
-        static let keyCap: CGFloat = 6
+        /// Filled buttons (utility / Trash action bars) and key caps.
+        static let control: CGFloat = 6
     }
 
     enum Size {
@@ -25,11 +26,20 @@ enum Theme {
         static let windowMinimum = NSSize(width: 480, height: 320)
         static let inputHeight: CGFloat = 48
         static let scopeBarHeight: CGFloat = 36
-        static let utilityBarHeight: CGFloat = 36
         static let chipHeight: CGFloat = 26
+        /// Bar buttons sit `windowInset` off the bottom edge — the same air
+        /// as the sides — with a short run-in above for the list to dissolve
+        /// into (ui.md §5).
+        static var utilityBarHeight: CGFloat { chipHeight + windowInset + Spacing.md }
         static let chipTitlePadding: CGFloat = 22
         static let chipSpacing: CGFloat = 8
-        static let contentInset: CGFloat = 16
+        /// Window edge → outermost chrome: Input capsule, Scope Bar rail and
+        /// "+", bar buttons and hints, the gap under them, Trash's bars.
+        /// Tune the ring with this one; it does not move the list's rails.
+        static let windowInset: CGFloat = 12
+        /// Window edge → the list's own rails: selection block edges, text
+        /// rail, time column. Independent of `windowInset` on purpose.
+        static let contentInset: CGFloat = 12
         static let neighborGap: CGFloat = 8
         static let groupHeaderHeight: CGFloat = 28
         static let disclosureSize: CGFloat = 12
@@ -43,7 +53,7 @@ enum Theme {
         static let symbolSlot = NSSize(width: 16, height: 12)
         /// A symbol-only chip ("+") is `symbolSlot.width + chipTitlePadding`
         /// wide; this puts the group chevron's centre under its centre —
-        /// both sit `contentInset` from the trailing edge.
+        /// both measured from `windowInset` at the trailing edge.
         static var disclosureNudge: CGFloat { (symbolSlot.width + chipTitlePadding - disclosureSize) / 2 }
         /// Left edge of list text: All's letters plus `listTextNudge`.
         static var textRail: CGFloat { contentInset + chipTitlePadding / 2 + listTextNudge }
@@ -57,11 +67,11 @@ enum Theme {
         }
 
         /// Trailing constraint constant so a subview pinned to `view.trailing`
-        /// lands `contentInset` inside the window.
-        static func trailingConstant(for view: NSView) -> CGFloat {
-            guard view.bounds.width > 1, let host = view.window?.contentView else { return -contentInset }
+        /// lands `inset` inside the window.
+        static func trailingConstant(for view: NSView, inset: CGFloat = contentInset) -> CGFloat {
+            guard view.bounds.width > 1, let host = view.window?.contentView else { return -inset }
             let maxX = view.convert(NSPoint(x: view.bounds.width, y: 0), to: host).x
-            return (host.bounds.width - contentInset) - maxX
+            return (host.bounds.width - inset) - maxX
         }
     }
 
@@ -105,20 +115,43 @@ enum Theme {
     }
 
     enum Chip {
-        static let outlineColor = Ink.outline
-        /// Selected chip is a 10 % ink block — the same idea as the selected row.
-        static let selectedFill = Ink.selection
+        /// Scope Bar chips are stroked capsules; bar buttons are filled
+        /// rounded rects so "this is a button" reads without a bezel
+        /// (ui.md §2.2, §5).
+        enum Style {
+            case capsule
+            case filled
+            /// Text-only: no fill, no stroke, `Ink.secondary` — a link-like
+            /// control such as Trash's Back.
+            case plain
+        }
 
-        static func paint(_ layer: CALayer, selected: Bool, in appearance: NSAppearance) {
+        static let outlineColor = Ink.outline
+        /// Selected capsule is a 10 % ink block — the same idea as the selected row.
+        static let selectedFill = Ink.selection
+        /// Filled button at rest; selected goes one stop up the ladder.
+        static let buttonFill = Ink.selection
+        static let buttonSelectedFill = Ink.outline
+
+        static func paint(_ layer: CALayer, style: Style, selected: Bool, in appearance: NSAppearance) {
             appearance.performAsCurrentDrawingAppearance {
-                if selected {
+                switch (style, selected) {
+                case (.capsule, true):
                     layer.backgroundColor = resolved(selectedFill)
                     layer.borderWidth = 0
                     layer.borderColor = NSColor.clear.cgColor
-                } else {
+                case (.capsule, false):
                     layer.backgroundColor = NSColor.clear.cgColor
                     layer.borderWidth = 1
                     layer.borderColor = resolved(outlineColor)
+                case (.filled, let on):
+                    layer.backgroundColor = resolved(on ? buttonSelectedFill : buttonFill)
+                    layer.borderWidth = 0
+                    layer.borderColor = NSColor.clear.cgColor
+                case (.plain, _):
+                    layer.backgroundColor = NSColor.clear.cgColor
+                    layer.borderWidth = 0
+                    layer.borderColor = NSColor.clear.cgColor
                 }
             }
         }

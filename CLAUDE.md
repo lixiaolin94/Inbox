@@ -58,6 +58,8 @@ BIN=/tmp/inbox-dd/Build/Products/Debug/Inbox.app/Contents/MacOS/Inbox
 
 - CloudKit 容器 `iCloud.com.xiaolin.Inbox` 当前为 **Development** 环境；分发前须切 Production 并部署 schema。
 - 冒烟合成的键盘事件必须同时带 keyCode 与字符（`RecordTableView` 按字符判定）；只给 keyCode 的事件会被表格忽略。
+- **两张列表都不用 `usesAutomaticRowHeights`**（R19 决定）：自动行高下 `reloadData()` 会把所有行重置为估算高度再在显示时逐行实测，滚动偏移在中间被夹住（编辑提交后列表跳一行）；`noteHeightOfRows` / `reloadData(forRowIndexes:)` 只长不缩；改宽时在 `setFrameSize` 里重载还会丢选区。现在行高由 delegate `heightOfRow` 给出——`RecordCellView.displayHeight(for:style:tableWidth:)` 用与绘制相同的 `WrappingTextFieldCell.cellSize` 测量并按内容缓存；编辑中的行由 `editingRowHeight` 提供。改宽只需 `noteHeightOfRows`（精确、可缩），但必须推迟到下一轮 run loop——在 `setFrameSize`（表自己的 tile 里）同步调用会触发 AppKit 的 "reentrant operation in its NSTableView delegate" 警告。`heightOfRow` 里不得向表要 cell view（同样是重入）。
+- `RecordTableView.scrollRowToVisible` 被重写为"行必须完整落在上下两条栏之间"（按 `contentInsets` 算），所有"露出这一行"的路径（↑↓、Resolve/Trash 后继承焦点、编辑提交、搜索结果）都走它；AppKit 原版只保证在 clip 内，会把行留在栏下面的溶解区里。
 - 底栏用自绘 `ScopeChipButton` 是实测后的决定（比平台 accessory-bar 按钮便宜，见 HISTORY R7），不要"顺手"换成 `NSButton`。
 - 窗口尺寸：顶层 surface 用 autoresizing 而非四边 Auto Layout 钉死——否则窗口会吸附 fitting size 坍缩（见 HISTORY「窗口坍缩事故」）。
 - `NSScrollView.contentInsets` 只有在 `contentView.automaticallyAdjustsContentInsets` 保持 `true` 时才会传到 clip view（R10 查明；之前以为它"不扩展滚动范围"）。Scope Bar 的尾部留白仍用 stack 的 edgeInsets。

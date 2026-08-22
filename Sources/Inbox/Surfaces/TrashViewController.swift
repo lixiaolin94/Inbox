@@ -8,9 +8,9 @@ final class TrashViewController: NSViewController {
     private let store: RecordStore
     private let tableView = RecordTableView()
     private let scrollView = OverlayScrollView()
+    private let backChip = ScopeChipButton(title: "Back")
     private let restoreButton = ScopeChipButton(title: "Restore")
     private let deletePermanentlyButton = ScopeChipButton(title: "Delete Permanently")
-    private let hintBar = HintBarView()
     private lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: Theme.Size.utilityBarHeight)
 
     private var records: [Record] = []
@@ -19,8 +19,6 @@ final class TrashViewController: NSViewController {
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("TrashRecordCell")
     private static let headerCellIdentifier = NSUserInterfaceItemIdentifier("TrashGroupHeader")
-    private static var rowHeight: CGFloat { max(32, Preferences.recordRowMinHeight - 4) }
-    private static let headerRowHeight: CGFloat = 28
 
     init(store: RecordStore) {
         self.store = store
@@ -55,11 +53,6 @@ final class TrashViewController: NSViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         listDissolve.update()
-        // Hints give way to the action chips when the bar is short of room.
-        let needed = Theme.Size.contentInset + restoreButton.fittingSize.width + Theme.Size.chipSpacing
-            + deletePermanentlyButton.fittingSize.width + Theme.Spacing.xl + hintBar.fittingSize.width
-            + Theme.Size.contentInset
-        hintBar.isHidden = needed > view.bounds.width
     }
 
     func reload(projects: [Project]) {
@@ -119,6 +112,12 @@ final class TrashViewController: NSViewController {
         tableView.selectionHighlightStyle = .regular
         tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
+        // Same row metrics as the main list (heights from the same cell
+        // measurement, same gap) so the selection block carries the same
+        // air (ui.md §6).
+        tableView.usesAutomaticRowHeights = false
+        tableView.rowHeight = Preferences.recordRowMinHeight
+        tableView.intercellSpacing = NSSize(width: 0, height: Theme.Spacing.sm)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.isNavigableRow = { [weak self] row in
@@ -152,28 +151,39 @@ final class TrashViewController: NSViewController {
         let headerBar = NSView()
         headerBar.translatesAutoresizingMaskIntoConstraints = false
 
-        let backButton = NSButton(title: "← Trash", target: self, action: #selector(goBack))
-        backButton.bezelStyle = .recessed
-        backButton.isBordered = false
-        backButton.font = .systemFont(ofSize: 13, weight: .semibold)
-        backButton.setAccessibilityLabel("Back to Inbox")
-        backButton.translatesAutoresizingMaskIntoConstraints = false
-        headerBar.addSubview(backButton)
+        // Back sits where "All" sits on the main surface — on the 16pt rail,
+        // with the surface title beside it — but plain: it is a way out,
+        // not an action, so it carries no fill.
+        backChip.style = .plain
+        backChip.symbolName = "chevron.left"
+        backChip.toolTip = "Back to Inbox (esc)"
+        backChip.setAccessibilityLabel("Back to Inbox")
+        backChip.onClick = { [weak self] in self?.goBack() }
+        backChip.translatesAutoresizingMaskIntoConstraints = false
+        headerBar.addSubview(backChip)
 
+        let titleLabel = NSTextField(labelWithString: "Trash")
+        titleLabel.font = Theme.Typography.groupHeader
+        titleLabel.textColor = Theme.Ink.tertiary
+        titleLabel.refusesFirstResponder = true
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        headerBar.addSubview(titleLabel)
+
+        restoreButton.style = .filled
         restoreButton.onClick = { [weak self] in self?.restoreSelected() }
         restoreButton.translatesAutoresizingMaskIntoConstraints = false
 
+        deletePermanentlyButton.style = .filled
         deletePermanentlyButton.onClick = { [weak self] in self?.deleteSelectedPermanently() }
         deletePermanentlyButton.translatesAutoresizingMaskIntoConstraints = false
 
-        hintBar.show([("↵", "Restore"), ("⌫", "Delete"), ("esc", "Back")])
-        hintBar.translatesAutoresizingMaskIntoConstraints = false
-
+        // No key hints here on purpose: Restore is mouse-only (button or
+        // context menu) and ⌫ asks for confirmation — Trash interactions
+        // are meant to cost more than the main surface's.
         let actionBar = NSView()
         actionBar.translatesAutoresizingMaskIntoConstraints = false
         actionBar.addSubview(restoreButton)
         actionBar.addSubview(deletePermanentlyButton)
-        actionBar.addSubview(hintBar)
 
         // List first, bars on top: both are transparent overlays over the
         // list's ends (ui.md §4).
@@ -192,28 +202,27 @@ final class TrashViewController: NSViewController {
             headerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             headerBar.heightAnchor.constraint(equalToConstant: Theme.Size.scopeBarHeight),
 
-            backButton.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: Theme.Spacing.xl),
-            backButton.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+            backChip.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: Theme.Size.windowInset),
+            backChip.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: backChip.trailingAnchor, constant: Theme.Size.chipSpacing),
+            titleLabel.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
 
             actionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             actionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             actionBar.heightAnchor.constraint(equalToConstant: Theme.Size.utilityBarHeight),
 
-            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: Theme.Size.contentInset),
-            restoreButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor),
+            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: Theme.Size.windowInset),
+            restoreButton.bottomAnchor.constraint(equalTo: actionBar.bottomAnchor, constant: -Theme.Size.windowInset),
 
             deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: Theme.Size.chipSpacing),
-            deletePermanentlyButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor),
-
-            hintBar.trailingAnchor.constraint(equalTo: actionBar.trailingAnchor, constant: -Theme.Size.contentInset),
-            hintBar.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor)
+            deletePermanentlyButton.centerYAnchor.constraint(equalTo: restoreButton.centerYAnchor)
         ])
     }
 
     // MARK: - Actions
 
-    @objc private func goBack() {
+    private func goBack() {
         onClose?()
     }
 
@@ -379,8 +388,8 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         switch rows[row] {
-        case .groupHeader: return Self.headerRowHeight
-        case .record: return Self.rowHeight
+        case .groupHeader: return Theme.Size.groupHeaderHeight
+        case .record(let record): return RecordCellView.displayHeight(for: record, style: .trash, tableWidth: tableView.bounds.width)
         }
     }
 
@@ -394,7 +403,13 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     var smokeAllowsMultipleSelection: Bool { tableView.allowsMultipleSelection }
     var smokeScrollInsets: NSEdgeInsets { scrollView.contentInsets }
-    var smokeHintTexts: [String] { hintBar.isHidden ? [] : hintBar.hintTexts }
     var smokeActionChips: [ScopeChipButton] { [restoreButton, deletePermanentlyButton] }
+    var smokeBackChip: ScopeChipButton { backChip }
+    /// Height of the first record row (row rect, gap included) as laid out.
+    var smokeRowHeight: CGFloat? {
+        tableView.layoutSubtreeIfNeeded()
+        guard let row = tableView.firstNavigableRow() else { return nil }
+        return tableView.rect(ofRow: row).height
+    }
     var smokeTableIsFirstResponder: Bool { view.window?.firstResponder === tableView }
 }

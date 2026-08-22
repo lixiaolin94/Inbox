@@ -6,6 +6,8 @@ import AppKit
 extension MainViewController {
     var smokeInputString: String { inputField.stringValue }
     var smokeVisibleRecords: [Record] { visibleRecords() }
+    /// No search in flight: the latest completion has been applied.
+    var smokeSearchSettled: Bool { settledSearchGeneration == searchGeneration }
     var smokeSelectedRecord: Record? { record(atTableRow: tableView.selectedRow) }
     var smokeSelectedRecords: [Record] { records(atTableRows: tableView.selectedNavigableRows) }
 
@@ -26,9 +28,18 @@ extension MainViewController {
         return record(atTableRow: row)?.id == id
     }
 
+    /// (live field width, width the height measurement assumes) — equal by
+    /// construction; the smoke keeps it that way.
+    func smokeFieldWidths(forRecordID id: String) -> (live: CGFloat, assumed: CGFloat)? {
+        guard let row = tableRow(forRecordID: id),
+              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? RecordCellView else { return nil }
+        cell.layoutSubtreeIfNeeded()
+        return (cell.smokeFieldWidth, RecordCellView.contentFieldWidth(tableWidth: tableView.bounds.width))
+    }
+
     func smokeWrapMetrics(forRecordID id: String) -> String? {
         guard let row = tableRow(forRecordID: id),
-              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? RecordCellView else { return nil }
+              let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? RecordCellView else { return nil }
         return String(format: "row %.1f ", tableView.rect(ofRow: row).height) + cell.smokeWrapMetrics
     }
 
@@ -111,7 +122,8 @@ extension MainViewController {
     /// Width of the tier currently loaded — the shown one, or the smallest
     /// tried when hidden.
     var smokeHintBarFittingWidth: CGFloat { hintBar.fittingSize.width }
-    var smokeTrashHintTexts: [String] { trashViewController.smokeHintTexts }
+    var smokeTrashBackChip: ScopeChipButton { trashViewController.smokeBackChip }
+    var smokeTrashRowHeight: CGFloat? { trashViewController.smokeRowHeight }
 
     /// Whether a click in the middle of the hint bar would land on it.
     var smokeHintBarTakesMouse: Bool {
