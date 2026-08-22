@@ -64,6 +64,6 @@ BIN=/tmp/inbox-dd/Build/Products/Debug/Inbox.app/Contents/MacOS/Inbox
 - `NSScrollView.contentInsets` 只有在 `contentView.automaticallyAdjustsContentInsets` 保持 `true` 时才会传到 clip view。Scope Bar 的尾部留白仍用 stack 的 edgeInsets。
 - 列表滚动视图必须是 `OverlayScrollView`：AppKit 会在系统首选样式变化（接鼠标）时把 `scrollerStyle` 改回 legacy，一次性设 `.overlay` 挡不住。
 - 列表上下用 `EdgeDissolve`（`CAGradientLayer` 作 `scrollView.layer.mask`）；这个 layer 的 unit y=0 在顶部，改遮罩先看 `main-scrolled-*` 快照核对方向。
-- xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包；剖析 Release 要复制包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`（HISTORY 决策 10）。
+- xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包；剖析 Release 要复制包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`（HISTORY 决策 14）。
 - 跨 SDK 版本：macOS 27 SDK 的新成员（如 `NSGlassEffectView.effectIsInteractive`）在 26 上编译失败，`#available` 救不了编译期——用 KVC。
 - SPM 裸二进制（`swift run`）没有 bundle/entitlements：同步与 Launch at Login 自动禁用，属预期。
