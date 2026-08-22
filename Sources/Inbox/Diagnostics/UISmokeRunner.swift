@@ -41,13 +41,15 @@ enum UISmokeRunner {
             try stepWindowGeometry(window: window, controller: controller)
             try stepChromeGeometry(window: window, controller: controller)
             try stepPixelAlignment(window: window, controller: controller)
+            try stepOverlayBars(window: window, controller: controller, store: store)
             try stepScopeBarOverflow()
             try stepA(window: window, controller: controller)
             try stepB(window: window, controller: controller, store: store)
             try stepC(window: window, controller: controller, store: store)
-            try stepUtilityBar(window: window, controller: controller)
+            try stepUtilityBar(window: window, controller: controller, store: store)
             try stepConflicts(window: window, controller: controller, store: store)
             try stepTrashSurface(window: window, controller: controller)
+            try stepUndoResolveAndMove(window: window, controller: controller, store: store)
             let pair = try stepD(window: window, controller: controller)
             try stepE(window: window, controller: controller, store: store, betaID: pair.betaID)
             try stepF(window: window, controller: controller, store: store, betaID: pair.betaID, alphaID: pair.alphaID)
@@ -73,7 +75,7 @@ enum UISmokeRunner {
     private static func stepWindowGeometry(window: NSWindow, controller: MainViewController) throws {
         try assertContentSize(
             of: window,
-            equals: MainWindowGeometry.defaultContentSize,
+            equals: Theme.Size.windowDefault,
             "initial window content size"
         )
         try assertEqual(window.titleVisibility, .hidden, "titleVisibility hidden")
@@ -112,9 +114,9 @@ enum UISmokeRunner {
         window.setFrame(narrow, display: true)
         window.layoutIfNeeded()
         pump()
-        if window.frame.width < MainWindowGeometry.minimumSize.width {
+        if window.frame.width < Theme.Size.windowMinimum.width {
             throw SmokeFailure(
-                "minSize should clamp width >= \(MainWindowGeometry.minimumSize.width), got \(window.frame.width)"
+                "minSize should clamp width >= \(Theme.Size.windowMinimum.width), got \(window.frame.width)"
             )
         }
 
@@ -123,7 +125,7 @@ enum UISmokeRunner {
         pump()
         try assertContentSize(
             of: window,
-            equals: MainWindowGeometry.defaultContentSize,
+            equals: Theme.Size.windowDefault,
             "content size after restoring original frame"
         )
     }
@@ -151,7 +153,7 @@ enum UISmokeRunner {
         controller.view.layoutSubtreeIfNeeded()
         pump()
         let input = controller.smokeInputFrame
-        try assertClose(input.height, UniversalInputView.chromeHeight, "input chrome height")
+        try assertClose(input.height, Theme.Size.inputHeight, "input chrome height")
         if input.minX < 12 {
             throw SmokeFailure("input should float inset from the leading edge, got x=\(input.minX)")
         }
@@ -197,10 +199,6 @@ enum UISmokeRunner {
             throw SmokeFailure("All chip should exist after launch")
         }
         try assertClose(allChip.minX, input.minX, "All chip aligns with the input")
-        let listGap = controller.smokeListTopGap
-        if listGap < 6 || listGap > 12 {
-            throw SmokeFailure("scope bar should sit with similar air above the list as above the chips, gap=\(listGap)")
-        }
         let add = controller.smokeAddButtonFrame
         if add.width < 20 || add.height < 20 {
             throw SmokeFailure("scope add button should exist, frame=\(add)")
@@ -223,7 +221,7 @@ enum UISmokeRunner {
         var strokeConverted = false
         controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
             guard let borderRGB = NSColor(cgColor: idleBorder)?.usingColorSpace(.deviceRGB),
-                  let strokeRGB = ChipChrome.outlineColor.usingColorSpace(.deviceRGB) else { return }
+                  let strokeRGB = Theme.Chip.outlineColor.usingColorSpace(.deviceRGB) else { return }
             borderRGB.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
             strokeRGB.getRed(&sr, green: &sg, blue: &sb, alpha: &sa)
             strokeConverted = true
@@ -233,7 +231,7 @@ enum UISmokeRunner {
         }
         if abs(br - sr) > 0.08 || abs(bg - sg) > 0.08 || abs(bb - sb) > 0.08 || abs(ba - sa) > 0.08 {
             throw SmokeFailure(
-                "idle chip stroke should match tertiaryLabelColor, got (\(br), \(bg), \(bb), \(ba))"
+                "idle chip stroke should match Theme.Chip.outlineColor, got (\(br), \(bg), \(bb), \(ba))"
             )
         }
         guard let selectedColor = controller.smokeSelectedScopeChipTextColor else {
@@ -244,7 +242,7 @@ enum UISmokeRunner {
         var converted = false
         controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
             guard let selectedRGB = selectedColor.usingColorSpace(.sRGB),
-                  let labelRGB = NSColor.labelColor.usingColorSpace(.sRGB) else { return }
+                  let labelRGB = Theme.Ink.primary.usingColorSpace(.sRGB) else { return }
             selectedRGB.getRed(&r, green: &g, blue: &b, alpha: &a)
             labelRGB.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
             converted = true
@@ -253,7 +251,7 @@ enum UISmokeRunner {
             throw SmokeFailure("selected scope chip title color could not be resolved")
         }
         if abs(r - lr) > 0.15 || abs(g - lg) > 0.15 || abs(b - lb) > 0.15 {
-            throw SmokeFailure("selected scope chip text should use labelColor, got \(selectedColor)")
+            throw SmokeFailure("selected scope chip text should use Theme.Ink.primary, got \(selectedColor)")
         }
         guard let selectedFill = controller.smokeSelectedScopeChipFillColor else {
             throw SmokeFailure("selected scope chip should have a fill color")
@@ -263,7 +261,7 @@ enum UISmokeRunner {
         var fillConverted = false
         controller.view.effectiveAppearance.performAsCurrentDrawingAppearance {
             guard let fillRGB = NSColor(cgColor: selectedFill)?.usingColorSpace(.deviceRGB),
-                  let controlRGB = ChipChrome.selectedFill.usingColorSpace(.deviceRGB) else { return }
+                  let controlRGB = Theme.Chip.selectedFill.usingColorSpace(.deviceRGB) else { return }
             fillRGB.getRed(&fr, green: &fg, blue: &fb, alpha: &fa)
             controlRGB.getRed(&cr, green: &cg, blue: &cb, alpha: &ca)
             fillConverted = true
@@ -273,7 +271,7 @@ enum UISmokeRunner {
         }
         if abs(fr - cr) > 0.08 || abs(fg - cg) > 0.08 || abs(fb - cb) > 0.08 || abs(fa - ca) > 0.08 {
             throw SmokeFailure(
-                "selected scope chip fill should match controlBackgroundColor, got (\(fr), \(fg), \(fb), \(fa))"
+                "selected scope chip fill should match Theme.Chip.selectedFill, got (\(fr), \(fg), \(fb), \(fa))"
             )
         }
         if controller.smokeHasInboxGroupHeader {
@@ -281,7 +279,7 @@ enum UISmokeRunner {
         }
         if let titleX = controller.smokeFirstGroupHeaderTitleMinX {
             if let allTitleX = controller.smokeAllTitleMinX {
-                try assertClose(titleX, allTitleX + LayoutChrome.listTextNudge, "group title aligns with All text", tolerance: 2)
+                try assertClose(titleX, allTitleX + Theme.Size.listTextNudge, "group title aligns with All text", tolerance: 2)
             }
             guard let disclosureX = controller.smokeFirstGroupHeaderDisclosureMinX else {
                 throw SmokeFailure("group header should have a trailing collapse control")
@@ -313,10 +311,113 @@ enum UISmokeRunner {
             }
         }
         for (label, frame) in chips {
-            try assertClose(frame.height, LayoutChrome.chipHeight, "\(label) height", tolerance: 0.01)
+            try assertClose(frame.height, Theme.Size.chipHeight, "\(label) height", tolerance: 0.01)
             if abs(frame.width - frame.width.rounded()) > 0.01 {
                 throw SmokeFailure("\(label) width should be integral, got \(frame.width)")
             }
+        }
+    }
+
+    /// Bars are transparent overlays on a full-height list (ui.md §4): no
+    /// separator anywhere, the list spanning Input→bottom with the
+    /// Scope Bar and utility bar over its ends, content resting just inside
+    /// them, and the edge dissolve following the scroll position. Seeds
+    /// enough rows to overflow, drives ↓ to the last row and ↑ back, and
+    /// deletes the rows again so later steps see the list they expect.
+    private static func stepOverlayBars(window: NSWindow, controller: MainViewController, store: RecordStore) throws {
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        let input = controller.smokeInputFrame
+        let list = controller.smokeScrollFrame
+        let scope = controller.smokeScopeBarFrame
+        let utility = controller.smokeUtilityBarFrame
+        try assertClose(input.minY - list.maxY, Theme.Spacing.md, "list starts Spacing.md under the input, no separator")
+        try assertClose(list.minY, 0, "list runs to the bottom of the surface")
+        try assertClose(scope.maxY, list.maxY, "scope bar overlays the top of the list")
+        try assertClose(scope.height, Theme.Size.scopeBarHeight, "scope bar overlay height")
+        try assertClose(utility.minY, 0, "utility bar overlays the bottom of the list")
+        try assertClose(utility.height, Theme.Size.utilityBarHeight, "utility bar overlay height")
+        let insets = controller.smokeScrollInsets
+        let scroller = controller.smokeScrollerInsets
+        try assertClose(insets.top, Theme.Size.scopeBarHeight, "top content inset equals the scope bar")
+        try assertClose(insets.bottom, Theme.Size.utilityBarHeight, "bottom content inset equals the utility bar")
+        try assertClose(scroller.top, insets.top, "scroller stays clear of the scope bar")
+        try assertClose(scroller.bottom, insets.bottom, "scroller stays clear of the utility bar")
+        let trashInsets = controller.smokeTrashScrollInsets
+        try assertClose(trashInsets.top, Theme.Size.scopeBarHeight, "trash list rests under its header bar")
+        try assertClose(trashInsets.bottom, Theme.Size.utilityBarHeight, "trash list rests above its action bar")
+        if controller.smokeHasDissolveMask {
+            throw SmokeFailure("an empty list should not be masked")
+        }
+
+        var probes: [Record] = []
+        for index in 0..<14 {
+            probes.append(try createRecordSync(store: store, content: "smoke overlay \(index)"))
+        }
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "overlay probe records visible") {
+            controller.smokeVisibleRecords.count == probes.count
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        guard let firstID = controller.smokeVisibleRecords.first?.id,
+              let lastID = controller.smokeVisibleRecords.last?.id else {
+            throw SmokeFailure("overlay probe records missing")
+        }
+        func assertRest(_ label: String) throws {
+            let dissolve = controller.smokeDissolveState
+            if dissolve.topActive || !dissolve.bottomActive {
+                throw SmokeFailure("\(label): at rest only the bottom band should be on, got \(dissolve)")
+            }
+            guard let clearance = controller.smokeRowClearance(forRecordID: firstID) else {
+                throw SmokeFailure("\(label): first row missing")
+            }
+            if clearance.top < insets.top - 0.5 {
+                throw SmokeFailure("\(label): first row should start under the scope bar, clearance \(clearance.top)")
+            }
+        }
+        try assertRest("after load")
+
+        controller.focusInputAtEnd()
+        for _ in 0..<probes.count {
+            try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        }
+        try waitUntil(showing: "↓ reached the last row") {
+            controller.smokeIsTableFirstResponder() && controller.smokeSelectedRecord?.id == lastID
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        let atEnd = controller.smokeDissolveState
+        if !atEnd.topActive || atEnd.bottomActive {
+            throw SmokeFailure("at the end only the top band should be on, got \(atEnd)")
+        }
+        guard let endClearance = controller.smokeRowClearance(forRecordID: lastID) else {
+            throw SmokeFailure("last row missing after ↓")
+        }
+        if endClearance.bottom < insets.bottom - 0.5 {
+            throw SmokeFailure("last row should scroll clear of the utility bar, clearance \(endClearance.bottom)")
+        }
+
+        for _ in 0..<(probes.count - 1) {
+            try sendArrow(.upArrow, keyCode: KeyCode.upArrow, window: window)
+        }
+        try waitUntil(showing: "↑ back at the first row") {
+            controller.smokeSelectedRecord?.id == firstID
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        try assertRest("after ↑")
+
+        for record in probes {
+            try applySync("overlay probe trashed") { store.moveToTrash(id: record.id, completion: $0) }
+            try applySync("overlay probe deleted") { store.permanentlyDelete(id: record.id, completion: $0) }
+        }
+        controller.focusInputAtEnd()
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "overlay probe records gone") { controller.smokeVisibleRecords.isEmpty }
+        try assertEqual(try trashedSync(store: store).count, 0, "Trash empty after the overlay step")
+        try waitUntil(showing: "Universal Input focused after the overlay step") {
+            controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
         }
     }
 
@@ -324,7 +425,7 @@ enum UISmokeRunner {
     /// (the custom chip is kept here on purpose — see MainViewController),
     /// Resolved toggles state without moving first responder, the sort
     /// chip's face and menu stay in sync and a pick re-orders the list.
-    private static func stepUtilityBar(window: NSWindow, controller: MainViewController) throws {
+    private static func stepUtilityBar(window: NSWindow, controller: MainViewController, store: RecordStore) throws {
         let resolved = controller.smokeResolvedChip
         let sort = controller.smokeSortChip
         let trash = controller.smokeTrashChip
@@ -337,20 +438,20 @@ enum UISmokeRunner {
                 throw SmokeFailure("\(label) chip must refuse first responder")
             }
             let frame = controller.smokeUtilityControlFrame(chip)
-            try assertClose(frame.height, LayoutChrome.chipHeight, "\(label) chip height")
+            try assertClose(frame.height, Theme.Size.chipHeight, "\(label) chip height")
             try assertClose(frame.midY, bar.midY, "\(label) chip centred in the utility bar")
         }
         let resolvedFrame = controller.smokeUtilityControlFrame(resolved)
-        try assertClose(resolvedFrame.minX, LayoutChrome.contentInset, "resolved chip leading on the chip rail")
+        try assertClose(resolvedFrame.minX, Theme.Size.contentInset, "resolved chip leading on the chip rail")
         try assertClose(
             controller.smokeUtilityControlFrame(sort).minX,
-            resolvedFrame.maxX + LayoutChrome.chipSpacing,
+            resolvedFrame.maxX + Theme.Size.chipSpacing,
             "sort chip follows resolved at chipSpacing"
         )
         try assertClose(
-            bar.width - controller.smokeUtilityControlFrame(trash).maxX,
-            LayoutChrome.contentInset,
-            "trash chip trailing on the chip rail"
+            controller.smokeUtilityControlFrame(trash).minX,
+            controller.smokeUtilityControlFrame(sort).maxX + Theme.Size.chipSpacing,
+            "trash chip closes the function group after sort while no conflicts are shown"
         )
 
         // Resolved: symbol and tooltip mirror the preference; toggling never
@@ -376,25 +477,26 @@ enum UISmokeRunner {
         try assertEqual(resolved.symbolName, "eye.slash", "resolved chip off after second click")
         try assertEqual(Preferences.showResolved, false, "Preferences.showResolved restored")
 
-        // Sort: face shows the short title, menu keeps the long ones with a
-        // checkmark on the current sort, and a pick re-orders the list.
+        // Sort: the chip is a two-state toggle (Newest ⇄ Priority). Give the
+        // older record a higher priority so the flip visibly re-orders.
         try assertEqual(sort.chipTitle, Preferences.sortOrder.chipTitle, "sort chip shows the current sort")
-        try assertEqual(controller.smokeSortMenuTitles, RecordSort.allCases.map(\.menuTitle), "sort menu lists every RecordSort")
-        try assertEqual(controller.smokeCheckedSortMenuTitle, RecordSort.newestFirst.menuTitle, "checkmark on the current sort")
         let newestFirst = controller.smokeVisibleRecords.map(\.id)
         try assertEqual(newestFirst.count, 2, "two records before the sort check")
-        controller.smokeSelectSort(.oldestFirst)
-        try waitUntil(showing: "list re-ordered oldest first") {
-            controller.smokeVisibleRecords.map(\.id) == Array(newestFirst.reversed())
+        let older = newestFirst[1]
+        try applySync("raise the older record to P1") { store.updatePriority(id: older, priority: Priority.p1.rawValue, completion: $0) }
+        controller.smokeToggleSort()
+        try waitUntil(showing: "list re-ordered by priority") {
+            controller.smokeVisibleRecords.map(\.id) == [older, newestFirst[0]]
         }
-        try assertEqual(sort.chipTitle, RecordSort.oldestFirst.chipTitle, "sort chip updates on change")
-        try assertEqual(Preferences.sortOrder, .oldestFirst, "Preferences.sortOrder follows the menu pick")
-        try assertEqual(controller.smokeCheckedSortMenuTitle, RecordSort.oldestFirst.menuTitle, "checkmark moves with the sort")
-        controller.smokeSelectSort(.newestFirst)
+        try assertEqual(sort.chipTitle, RecordSort.priority.chipTitle, "sort chip flips to Priority")
+        try assertEqual(Preferences.sortOrder, .priority, "Preferences.sortOrder follows the toggle")
+        try applySync("restore the older record to P2") { store.updatePriority(id: older, priority: Priority.p2.rawValue, completion: $0) }
+        controller.smokeToggleSort()
         try waitUntil(showing: "list restored newest first") {
             controller.smokeVisibleRecords.map(\.id) == newestFirst
+                && controller.smokeVisibleRecords.first { $0.id == older }?.priority == Priority.p2.rawValue
         }
-        try assertEqual(sort.chipTitle, RecordSort.newestFirst.chipTitle, "sort chip restored")
+        try assertEqual(sort.chipTitle, RecordSort.newestFirst.chipTitle, "sort chip flips back")
         try assertEqual(Preferences.sortOrder, .newestFirst, "Preferences.sortOrder restored")
 
         // Trash action bar (hidden surface; no display needed for these).
@@ -403,6 +505,59 @@ enum UISmokeRunner {
         for chip in actions where !chip.refusesFirstResponder {
             throw SmokeFailure("\(chip.chipTitle) must refuse first responder")
         }
+        try assertEqual(controller.smokeTrashHintTexts, ["↵ Restore", "⌫ Delete", "esc Back"], "trash action bar hints")
+
+        // Key hints (ui.md §5): trailing on the rail, following the focus
+        // state, never taking the mouse or first responder.
+        controller.focusInputAtEnd()
+        try waitUntil(showing: "input hints") { controller.smokeHintTexts == ["↵ Create", "↓ List"] }
+        controller.view.layoutSubtreeIfNeeded()
+        guard let hintFrame = controller.smokeHintBarFrame else {
+            throw SmokeFailure("hint bar should fit at \(bar.width)pt")
+        }
+        try assertClose(bar.width - hintFrame.maxX, Theme.Size.contentInset, "hint bar trailing on the chip rail")
+        try assertClose(hintFrame.midY, bar.midY, "hint bar centred in the utility bar")
+        if hintFrame.minX < controller.smokeFunctionGroupMaxX + Theme.Spacing.xl - 0.5 {
+            throw SmokeFailure("hint bar should sit Spacing.xl clear of the function group, frame=\(hintFrame)")
+        }
+        if controller.smokeHintBarTakesMouse {
+            throw SmokeFailure("hint bar must not be hit-testable")
+        }
+        if !controller.smokeIsInputFirstResponder() {
+            throw SmokeFailure("hint bar must not move first responder away from Universal Input")
+        }
+        try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        try waitUntil(showing: "row hints after ↓") {
+            controller.smokeIsTableFirstResponder()
+                && Array(controller.smokeHintTexts.prefix(3)) == ["↵ Edit", "␣ Resolve", "⌫ Trash"]
+        }
+        controller.focusInputAtEnd()
+        try waitUntil(showing: "input hints restored") { controller.smokeHintTexts == ["↵ Create", "↓ List"] }
+
+        // At the minimum width the rule decides, not a fixed outcome: shown
+        // only while the smallest tier fits beside the function group.
+        let originalFrame = window.frame
+        var narrow = originalFrame
+        narrow.size.width = Theme.Size.windowMinimum.width
+        window.setFrame(narrow, display: true)
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        let narrowBar = controller.smokeUtilityBarFrame
+        let needed = controller.smokeFunctionGroupMaxX + Theme.Spacing.xl
+            + controller.smokeHintBarFittingWidth + Theme.Size.contentInset
+        if let frame = controller.smokeHintBarFrame {
+            if needed > narrowBar.width + 0.5 {
+                throw SmokeFailure("hint bar shown at \(narrowBar.width)pt though it needs \(needed)pt")
+            }
+            try assertClose(narrowBar.width - frame.maxX, Theme.Size.contentInset, "hint bar trailing on the rail at minimum width")
+        } else if needed <= narrowBar.width {
+            throw SmokeFailure("hint bar hidden at \(narrowBar.width)pt though \(needed)pt fits")
+        }
+        window.setFrame(originalFrame, display: true)
+        window.layoutIfNeeded()
+        pump()
+        try waitUntil(showing: "input hints after restoring the width") { controller.smokeHintTexts == ["↵ Create", "↓ List"] }
     }
 
     /// Conflict centre (PRD §15.3): a pair manufactured straight in the DB
@@ -434,7 +589,7 @@ enum UISmokeRunner {
         let chipFrame = controller.smokeUtilityControlFrame(chip)
         try assertClose(
             chipFrame.minX,
-            controller.smokeUtilityControlFrame(controller.smokeSortChip).maxX + LayoutChrome.chipSpacing,
+            controller.smokeUtilityControlFrame(controller.smokeSortChip).maxX + Theme.Size.chipSpacing,
             "conflicts chip follows sort at chipSpacing"
         )
         try assertClose(chipFrame.midY, controller.smokeUtilityBarFrame.midY, "conflicts chip centred in the utility bar")
@@ -526,6 +681,53 @@ enum UISmokeRunner {
         }
     }
 
+    /// ⌘Z covers Resolve and Move as well as Move to Trash: a fresh record
+    /// is resolved with Space and undone back to Open, then moved to a new
+    /// Project and undone back to Inbox. Cleans up after itself so later
+    /// steps see the list they expect.
+    private static func stepUndoResolveAndMove(window: NSWindow, controller: MainViewController, store: RecordStore) throws {
+        let record = try createRecordSync(store: store, content: "smoke undo probe")
+        var projectID: String?
+        try applySync("create the undo probe project") { done in
+            store.projects.createProject(name: "Undo Probe") { done($0.map { _ in () }) }
+        }
+        var projects: [Project] = []
+        try applySync("list projects") { done in store.projects.listProjects { projects = (try? $0.get()) ?? []; done(.success(())) } }
+        projectID = projects.first { $0.name == "Undo Probe" }?.id
+        guard let probeProject = projectID else { throw SmokeFailure("undo probe project missing") }
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "undo probe listed") { controller.smokeVisibleRecords.contains { $0.id == record.id } }
+
+        // Resolve → ⌘Z reopens.
+        controller.focusInputAtEnd()
+        try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        try waitUntil(showing: "undo probe focused") { controller.smokeSelectedRecord?.id == record.id }
+        try sendSpecial(keyCode: KeyCode.space, characters: " ", window: window)
+        try waitUntil(showing: "undo probe resolved and gone") { !controller.smokeVisibleRecords.contains { $0.id == record.id } }
+        try sendCommand("z", keyCode: KeyCode.z, window: window)
+        try waitUntil(showing: "⌘Z reopened the undo probe") {
+            controller.smokeVisibleRecords.first { $0.id == record.id }?.status == RecordStatus.open.rawValue
+        }
+
+        // Move → ⌘Z moves it back to Inbox.
+        controller.smokeMoveRecords(ids: [record.id], to: probeProject)
+        try waitUntil(showing: "undo probe moved to the project") {
+            controller.smokeVisibleRecords.first { $0.id == record.id }?.projectID == probeProject
+        }
+        try sendCommand("z", keyCode: KeyCode.z, window: window)
+        try waitUntil(showing: "⌘Z moved the undo probe back to Inbox") {
+            controller.smokeVisibleRecords.first { $0.id == record.id }?.projectID == nil
+        }
+
+        // Clean up: trash + permanently delete the probe, delete the project.
+        try applySync("trash the undo probe") { store.moveToTrash(id: record.id, completion: $0) }
+        try applySync("delete the undo probe") { store.permanentlyDelete(id: record.id, completion: $0) }
+        try applySync("delete the undo probe project") { store.projects.deleteProject(id: probeProject, completion: $0) }
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "undo probe cleaned up") { !controller.smokeVisibleRecords.contains { $0.id == record.id } }
+        controller.focusInputAtEnd()
+    }
+
     /// Trash chip opens the secondary surface with its table focused; Esc
     /// (NSTableView → cancelOperation up the responder chain to
     /// TrashViewController) returns to the main surface with Universal
@@ -565,7 +767,7 @@ enum UISmokeRunner {
     private static func stepWindowReopen(window: NSWindow, controller: MainViewController) throws {
         try assertContentSize(
             of: window,
-            equals: MainWindowGeometry.defaultContentSize,
+            equals: Theme.Size.windowDefault,
             "content size before close"
         )
         window.performClose(nil)
@@ -578,7 +780,7 @@ enum UISmokeRunner {
         try waitUntil(showing: "window visible after presentMainWindow") { window.isVisible }
         try assertContentSize(
             of: window,
-            equals: MainWindowGeometry.defaultContentSize,
+            equals: Theme.Size.windowDefault,
             "content size after close and presentMainWindow"
         )
         try waitUntil(showing: "Universal Input is first responder after reopen") {
@@ -632,14 +834,18 @@ enum UISmokeRunner {
             throw SmokeFailure("record cell should exist after first create")
         }
         if let allTitleX = controller.smokeAllTitleMinX {
-            try assertClose(recordX, allTitleX + LayoutChrome.listTextNudge, "priority text aligns with All text", tolerance: 2)
+            try assertClose(recordX, allTitleX + Theme.Size.listTextNudge, "priority text aligns with All text", tolerance: 2)
         }
         if let timeGap = controller.smokeFirstRecordTimeTrailingGap {
             try assertClose(timeGap, 16, "time trailing aligns with the 16pt rail", tolerance: 14)
         }
-        if let timeGap = controller.smokeFirstRecordTimeTrailingGap,
-           let disclosureGap = controller.smokeFirstGroupDisclosureTrailingGap {
-            try assertClose(timeGap, disclosureGap, "time and disclosure share the trailing rail", tolerance: 2)
+        if let disclosureX = controller.smokeFirstGroupHeaderDisclosureMinX {
+            try assertClose(
+                disclosureX + Theme.Size.disclosureSize / 2,
+                controller.smokeAddButtonFrame.midX,
+                "group chevron centres under the Scope Bar's + chip",
+                tolerance: 1
+            )
         }
         if controller.smokeHasInboxGroupHeader {
             throw SmokeFailure("creating into All should not grow an Inbox group header")
@@ -921,6 +1127,18 @@ enum UISmokeRunner {
     ) throws {
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         let longID = try seedSnapshotData(controller: controller, store: store)
+        // Projects exist now, so the All view has group headers to measure.
+        try waitUntil(showing: "group header rendered for the chevron check") {
+            controller.smokeFirstGroupHeaderDisclosureMinX != nil
+        }
+        if let disclosureX = controller.smokeFirstGroupHeaderDisclosureMinX {
+            try assertClose(
+                disclosureX + Theme.Size.disclosureSize / 2,
+                controller.smokeAddButtonFrame.midX,
+                "group chevron centres under the Scope Bar's + chip",
+                tolerance: 1
+            )
+        }
         let originalFrame = window.frame
 
         func render(_ name: String) throws {
@@ -949,6 +1167,23 @@ enum UISmokeRunner {
             controller.smokeVisibleRecords.count > openCount
         }
         try eachVariant { try render("main-resolved-\($0)") }
+        // Rows ghosting under both bars: ↓ to the last row of the (longer)
+        // resolved list so the top band is on and the list sits at the end.
+        window.appearance = NSAppearance(named: .aqua)
+        setSnapshotFrame(window: window, width: 720)
+        controller.focusInputAtEnd()
+        let resolvedCount = controller.smokeVisibleRecords.count
+        for _ in 0..<resolvedCount {
+            try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        }
+        try waitUntil(showing: "last resolved row selected for the scrolled snapshot") {
+            controller.smokeSelectedRecord?.id == controller.smokeVisibleRecords.last?.id
+        }
+        controller.smokeFlashScrollers()
+        pump()
+        pump()
+        try render("main-scrolled-aqua-720")
+        controller.focusInputAtEnd()
         controller.smokeClickResolved()
         try waitUntil(showing: "resolved records hidden again") {
             controller.smokeVisibleRecords.count == openCount
@@ -997,7 +1232,7 @@ enum UISmokeRunner {
         window.setFrame(originalFrame, display: true)
         window.layoutIfNeeded()
         pump()
-        try assertContentSize(of: window, equals: MainWindowGeometry.defaultContentSize, "content size after snapshots")
+        try assertContentSize(of: window, equals: Theme.Size.windowDefault, "content size after snapshots")
         try assertEqual(Preferences.showResolved, false, "Show Resolved off after snapshots")
         try assertEqual(controller.smokeIsShowingTrash, false, "main surface after snapshots")
         controller.focusInputAtEnd()
@@ -1024,6 +1259,7 @@ enum UISmokeRunner {
         pump()
         if let wrapRecordID {
             writeLine("WRAP \(name): \(controller.smokeWrapMetrics(forRecordID: wrapRecordID) ?? "-")")
+            writeLine("DISSOLVE \(name): \(controller.smokeDissolveDebug)")
         }
         guard let content = window.contentView,
               let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
@@ -1397,6 +1633,7 @@ enum UISmokeRunner {
         static let escape: UInt16 = 53
         static let leftArrow: UInt16 = 123
         static let downArrow: UInt16 = 125
+        static let upArrow: UInt16 = 126
     }
 }
 

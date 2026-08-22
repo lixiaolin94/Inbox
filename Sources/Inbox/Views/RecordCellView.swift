@@ -95,7 +95,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         contentField.setContentHuggingPriority(.required, for: .vertical)
 
         timeLabel.font = .systemFont(ofSize: fontSize)
-        timeLabel.textColor = .secondaryLabelColor
+        timeLabel.textColor = Theme.Ink.secondary
         timeLabel.alignment = .right
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         lockSingleLine(timeLabel)
@@ -106,17 +106,17 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
         clipsToBounds = true
 
-        priorityLeadingConstraint = priorityLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: LayoutChrome.textRail)
+        priorityLeadingConstraint = priorityLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Size.textRail)
         priorityWidthConstraint = priorityLabel.widthAnchor.constraint(equalToConstant: Self.priorityColumnWidth(fontSize: fontSize))
         contentLeadingConstraint = contentField.leadingAnchor.constraint(equalTo: priorityLabel.trailingAnchor, constant: 8)
         // Min pads keep the text off the selection edge; centerY splits any
-        // leftover row height so focused blue highlight is even top/bottom.
+        // leftover row height so the selection block is even top/bottom.
         contentTopConstraint = contentField.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: pad)
         contentBottomLimit = contentField.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -pad)
         contentCenterY = contentField.centerYAnchor.constraint(equalTo: centerYAnchor)
         minHeightConstraint = heightAnchor.constraint(greaterThanOrEqualToConstant: Preferences.recordRowMinHeight)
         timeWidthConstraint = timeLabel.widthAnchor.constraint(equalToConstant: Self.timeColumnWidth(fontSize: fontSize))
-        timeTrailingConstraint = timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -LayoutChrome.contentInset)
+        timeTrailingConstraint = timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.contentInset)
 
         NSLayoutConstraint.activate([
             minHeightConstraint,
@@ -153,14 +153,14 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
     /// passes so a narrow fitting-size doesn't crush the Priority column
     /// and wrap "P2" onto two lines.
     private func pinToWindowRail() {
-        let minRow = LayoutChrome.textRail + Self.priorityColumnWidth(fontSize: Preferences.recordFontSize)
+        let minRow = Theme.Size.textRail + Self.priorityColumnWidth(fontSize: Preferences.recordFontSize)
             + 8 + 80 + 10 + Self.timeColumnWidth(fontSize: Preferences.recordFontSize)
         guard bounds.width >= minRow else { return }
-        let leading = LayoutChrome.leadingConstant(for: self)
+        let leading = Theme.Size.leadingConstant(for: self)
         if abs(priorityLeadingConstraint.constant - leading) > 0.5 {
             priorityLeadingConstraint.constant = leading
         }
-        let trailing = LayoutChrome.trailingConstant(for: self)
+        let trailing = Theme.Size.trailingConstant(for: self)
         if abs(timeTrailingConstraint.constant - trailing) > 0.5 {
             timeTrailingConstraint.constant = trailing
         }
@@ -205,7 +205,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             contentLeadingConstraint.constant = 0
             let timestamp = record.deletedAt ?? record.createdAt
             timeLabel.stringValue = Self.relativeTimeString(fromMillis: timestamp)
-            timeLabel.textColor = .secondaryLabelColor
+            timeLabel.textColor = Theme.Ink.secondary
             // An attributed value carries its own paragraph style, which
             // overrides the cell's lineBreakMode — without this the Trash
             // row clipped mid-glyph instead of showing an ellipsis.
@@ -215,7 +215,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
                 string: record.content,
                 attributes: [
                     .font: contentFont,
-                    .foregroundColor: NSColor.labelColor,
+                    .foregroundColor: Theme.Ink.primary,
                     .paragraphStyle: truncating
                 ]
             )
@@ -234,22 +234,22 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
                 string: record.content,
                 attributes: [
                     .font: contentFont,
-                    .foregroundColor: NSColor.tertiaryLabelColor,
+                    .foregroundColor: Theme.Ink.tertiary,
                     .strikethroughStyle: NSUnderlineStyle.single.rawValue
                 ]
             )
-            priorityLabel.textColor = .tertiaryLabelColor
-            timeLabel.textColor = .quaternaryLabelColor
+            priorityLabel.textColor = Theme.Ink.tertiary
+            timeLabel.textColor = Theme.Ink.tertiary
         } else {
             contentField.attributedStringValue = NSAttributedString(
                 string: record.content,
                 attributes: [
                     .font: contentFont,
-                    .foregroundColor: NSColor.labelColor
+                    .foregroundColor: Theme.Ink.primary
                 ]
             )
             priorityLabel.textColor = Self.color(for: priority)
-            timeLabel.textColor = .secondaryLabelColor
+            timeLabel.textColor = Theme.Ink.secondary
         }
         if isConflicted {
             timeLabel.stringValue = Self.conflictBadgeText
@@ -325,7 +325,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             string: text,
             attributes: [
                 .font: font,
-                .foregroundColor: NSColor.labelColor
+                .foregroundColor: Theme.Ink.primary
             ]
         )
         contentField.isEditable = true
@@ -347,7 +347,7 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
     private func configureFieldEditor(_ editor: NSTextView, font: NSFont) {
         editor.font = font
-        editor.textColor = .labelColor
+        editor.textColor = Theme.Ink.primary
         editor.drawsBackground = false
         editor.isRichText = false
         editor.textContainerInset = .zero
@@ -413,8 +413,8 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         switch priority {
         case .p0: return .systemRed
         case .p1: return .systemOrange
-        case .p2: return .secondaryLabelColor
-        case .p3: return .tertiaryLabelColor
+        case .p2: return Theme.Ink.secondary
+        case .p3: return Theme.Ink.tertiary
         }
     }
 

@@ -93,7 +93,33 @@ extension MainViewController {
                 self.refreshVisibleSurface()
                 return
             }
+            self.registerUndoStatus(ids: targetIDs, undoTo: willResolve ? .open : .resolved, name: willResolve ? "Resolve" : "Reopen")
             self.applyResolveResult(recordIDs: targetIDs, resolved: willResolve)
+        }
+    }
+
+    /// Undo/redo of Resolve and Reopen share one handler: set `status` on
+    /// `ids`, re-registering the opposite step synchronously first (the
+    /// store write is async; registering in its completion would open a
+    /// new undo group). Redo of Reopen re-resolves with a fresh
+    /// `resolvedAt`, not the original timestamp — the store has no API to
+    /// set one, and the difference is invisible in the UI.
+    private func registerUndoStatus(ids: [String], undoTo status: RecordStatus, name: String) {
+        registerUndoStep(name: name) { target in
+            target.setStatusForUndo(ids: ids, status: status, name: name)
+        }
+    }
+
+    private func setStatusForUndo(ids: [String], status: RecordStatus, name: String) {
+        registerUndoStatus(ids: ids, undoTo: status == .open ? .resolved : .open, name: name)
+        RecordStore.batch(ids: ids, operation: { id, done in
+            store.setStatus(id: id, status: status, completion: done)
+        }) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                Dialogs.persistenceFailure(error)
+            }
+            self.refreshVisibleSurface(selecting: ids)
         }
     }
 
@@ -277,14 +303,6 @@ extension MainViewController {
         }
     }
 
-    func popMoveMenu(forRows rowIndexes: IndexSet) {
-        let targets = records(atTableRows: rowIndexes)
-        guard !targets.isEmpty, let anchorRow = rowIndexes.first else { return }
-        let menu = makeMoveDestinationMenu(for: targets)
-        let rect = tableView.rect(ofRow: anchorRow)
-        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.midY), in: tableView)
-    }
-
     private func makeMoveDestinationMenu(for targets: [Record]) -> NSMenu {
         let menu = NSMenu()
         let ids = targets.map(\.id)
@@ -317,6 +335,7 @@ extension MainViewController {
         }
         guard !moving.isEmpty else { return }
 
+        let previous = moving.map { id in (id: id, projectID: records.first { $0.id == id }?.projectID) }
         RecordStore.batch(ids: moving, operation: { id, done in
             store.updateProject(id: id, projectID: projectID, completion: done)
         }) { [weak self] error in
@@ -326,7 +345,31 @@ extension MainViewController {
                 self.refreshVisibleSurface()
                 return
             }
+            self.registerUndoAssignments(previous, redo: moving.map { (id: $0, projectID: projectID) })
             self.applyMoveResult(recordIDs: moving, newProjectID: projectID)
+        }
+    }
+
+    /// Undo/redo of Move: each Record goes back to the Project it came
+    /// from (they may differ within one batch), the opposite step
+    /// re-registered synchronously first.
+    private func registerUndoAssignments(_ undo: [(id: String, projectID: String?)], redo: [(id: String, projectID: String?)]) {
+        registerUndoStep(name: "Move") { target in
+            target.assignForUndo(undo, inverse: redo)
+        }
+    }
+
+    private func assignForUndo(_ assignments: [(id: String, projectID: String?)], inverse: [(id: String, projectID: String?)]) {
+        registerUndoAssignments(inverse, redo: assignments)
+        RecordStore.batch(ids: assignments.map(\.id), operation: { id, done in
+            guard let target = assignments.first(where: { $0.id == id }) else { return }
+            store.updateProject(id: id, projectID: target.projectID, completion: done)
+        }) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                Dialogs.persistenceFailure(error)
+            }
+            self.refreshVisibleSurface(selecting: assignments.map(\.id))
         }
     }
 
@@ -394,6 +437,20 @@ extension MainViewController {
         }
     }
 
+    // MARK: - Undo plumbing
+
+    /// One undo step per action. Inside an undo/redo the manager already
+    /// has a group open for the inverse registration, so only the first
+    /// registration of an action opens one.
+    func registerUndoStep(name: String, _ handler: @escaping (MainViewController) -> Void) {
+        guard let undoManager else { return }
+        let ownGroup = !undoManager.isUndoing && !undoManager.isRedoing
+        if ownGroup { undoManager.beginUndoGrouping() }
+        undoManager.registerUndo(withTarget: self, handler: handler)
+        undoManager.setActionName(name)
+        if ownGroup { undoManager.endUndoGrouping() }
+    }
+
     // MARK: - Move to Trash (PRD §8.8) and Undo
 
     func moveSelectedRecordsToTrash(atRows rowIndexes: IndexSet) {
@@ -430,10 +487,9 @@ extension MainViewController {
     /// redo action synchronously while `isUndoing` is still true — the store
     /// write itself is async and must not be the place that re-registers.
     private func restoreRecordsFromTrashForUndo(ids: [String]) {
-        undoManager?.registerUndo(withTarget: self) { target in
+        registerUndoStep(name: "Move to Trash") { target in
             target.moveRecordsToTrashForRedo(ids: ids)
         }
-        undoManager?.setActionName("Move to Trash")
         RecordStore.batch(ids: ids, operation: { id, done in
             store.restoreFromTrash(id: id) { done($0.map { _ in () }) }
         }) { [weak self] error in
@@ -447,10 +503,9 @@ extension MainViewController {
     }
 
     private func moveRecordsToTrashForRedo(ids: [String]) {
-        undoManager?.registerUndo(withTarget: self) { target in
+        registerUndoStep(name: "Move to Trash") { target in
             target.restoreRecordsFromTrashForUndo(ids: ids)
         }
-        undoManager?.setActionName("Move to Trash")
         RecordStore.batch(ids: ids, operation: { id, done in
             store.moveToTrash(id: id, completion: done)
         }) { [weak self] error in
@@ -465,10 +520,9 @@ extension MainViewController {
     }
 
     private func registerUndoRestore(ids: [String]) {
-        undoManager?.registerUndo(withTarget: self) { target in
+        registerUndoStep(name: "Move to Trash") { target in
             target.restoreRecordsFromTrashForUndo(ids: ids)
         }
-        undoManager?.setActionName("Move to Trash")
     }
 
     private func applyMoveToTrashUI(recordIDs: [String]) {

@@ -10,9 +10,9 @@ Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation�
 
 - **Universal Input**：单一输入框身兼 Create 与 Search；有内容时列表实时转为当前 Scope 内的相关结果，不进入独立搜索模式。
 - **Enter 创建**：只要焦点没有主动移到某条 Record 上，Enter 永远是"创建当前输入内容"，即使存在完全相同的内容。
-- **键盘模型**：`↑↓` 在 Input 与 Record List 间导航；`←→` 调整 Priority；`Space` Resolve / Reopen；`Enter` 进入 Inline Edit；`M` 打开 Move 菜单；`⌫` 移入 Trash；`⌘Z` 撤销删除；`⌘1…⌘0` 切换 Scope。
+- **键盘模型**：`↑↓` 在 Input 与 Record List 间导航；`←→` 调整 Priority；`Space` Resolve / Reopen；`Enter` 进入 Inline Edit；`⌫` 移入 Trash；`⌘Z` 撤销 Resolve / Move / 删除；`⌘1…⌘0` 切换 Scope。
 - **Project Scope**：横向 Scope Bar（`All | Project… | +`），All View 按 Inbox → Project Manual Order 分组并可折叠；Scope 同时决定搜索范围和新建 Record 的归属。
-- **排序与 Show Resolved**：Newest First / Oldest First / Priority 三种全局排序（Utility 栏左侧的排序 chip）；Resolved 眼睛开关关闭时 Resolved 立即从列表消失，开启时排在各组 Open 之后（划线样式区分，无标题行）。
+- **排序与 Show Resolved**：排序 chip 在 Newest ⇄ Priority 之间一键切换（无菜单）；Resolved 眼睛开关关闭时 Resolved 立即从列表消失，开启时排在各组 Open 之后（划线样式区分，无标题行）。
 - **Trash**：软删除 + `⌘Z` 撤销；独立 Secondary Surface 提供 Restore 和高成本、明确确认的 Permanent Delete。
 - **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏图标左键 / `⌘Tab` 重新激活时 Universal Input 立即获得焦点，首键不丢失；菜单栏图标右键出菜单；可选 Launch at Login。
 - **Local-first SQLite**：每台设备一份本地 SQLite，所有高频操作先落盘、UI 立即反馈，再异步同步；无网络时功能完整可用。
@@ -60,10 +60,9 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | Record List（Row Focus） | `→` | 降低 Priority（向 P3 方向前进一档，已在 P3 不循环；作用于整个选区） |
 | Record List（Row Focus） | `Space` | Toggle Resolved / Reopen（多选时：选区内有 Open 则全部 Resolve，全为 Resolved 才 Reopen） |
 | Record List（Row Focus） | `Enter` | 进入 Inline Edit（`Enter` 提交 / `Esc` 取消；仅单选时有效） |
-| Record List（Row Focus） | `M` | 打开 Move to（切换选中 Record 的 Project 归属） |
 | Record List（Row Focus） | `⌫` (Delete/Backspace) | 移入 Trash（软删除；多选为一步操作，`⌘Z` 一次性还原） |
 | Record List（All View） | 鼠标拖拽 | 拖拽选中行到某个分组，批量调整 Project 归属 |
-| 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Move to Trash |
+| 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Resolve·Reopen、Move（改 Project）、Move to Trash |
 | 全局 | `⌘1` | 切到 All |
 | 全局 | `⌘2`…`⌘0` | 按 Project Manual Order 切到对应 Project（第 1–9 个；更多需用 Scope Bar 或鼠标） |
 | 全局 | `⌘,` | 打开 Settings（Launch at Login、iCloud Sync） |

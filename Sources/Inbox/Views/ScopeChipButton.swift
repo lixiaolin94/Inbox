@@ -1,66 +1,6 @@
 import AppKit
 
-enum LayoutChrome {
-    static let contentInset: CGFloat = 16
-    static let chipHeight: CGFloat = 26
-    static let chipSpacing: CGFloat = 8
-    static let chipTitlePadding: CGFloat = 22
-    static let neighborGap: CGFloat = 8
-    static let chipFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-    /// Optical shift for list text (Priority / project names) relative to
-    /// the "All" letters. Negative = left. Tweak this, not the cell layouts.
-    static let listTextNudge: CGFloat = -2
-    /// Extra trailing inset for the group-header chevron so it optically
-    /// lines up with time glyphs and the Trash chip. Larger = further left.
-    static let disclosureNudge: CGFloat = 10
-    /// Left edge of list text: All's letters plus `listTextNudge`.
-    static var textRail: CGFloat { contentInset + chipTitlePadding / 2 + listTextNudge }
-
-    /// Leading constant that puts `view`'s origin on All's *text* edge,
-    /// cancelling NSTableView's cell inset.
-    static func leadingConstant(for view: NSView) -> CGFloat {
-        guard view.bounds.width > 1, let host = view.window?.contentView else { return textRail }
-        let x = view.convert(.zero, to: host).x
-        return textRail - x
-    }
-
-    /// Trailing constraint constant so a subview pinned to `view.trailing`
-    /// lands `contentInset` inside the window.
-    static func trailingConstant(for view: NSView) -> CGFloat {
-        guard view.bounds.width > 1, let host = view.window?.contentView else { return -contentInset }
-        let maxX = view.convert(NSPoint(x: view.bounds.width, y: 0), to: host).x
-        return (host.bounds.width - contentInset) - maxX
-    }
-}
-
-enum ChipChrome {
-    /// `separatorColor` is ~10% black/white — enough for a window-width
-    /// NSBox, but a 26pt capsule stroke washes out on light glass.
-    /// tertiaryLabel keeps the divider's polarity with readable contrast.
-    static let outlineColor = NSColor.tertiaryLabelColor
-    /// Selected chip fill: white on light, elevated control surface on dark.
-    static let selectedFill = NSColor.controlBackgroundColor
-
-    static func paint(_ layer: CALayer, selected: Bool, in appearance: NSAppearance) {
-        appearance.performAsCurrentDrawingAppearance {
-            if selected {
-                layer.backgroundColor = resolved(selectedFill)
-                layer.borderWidth = 0
-                layer.borderColor = NSColor.clear.cgColor
-            } else {
-                layer.backgroundColor = NSColor.clear.cgColor
-                layer.borderWidth = 1
-                layer.borderColor = resolved(outlineColor)
-            }
-        }
-    }
-
-    static func resolved(_ color: NSColor) -> CGColor {
-        color.usingColorSpace(.deviceRGB)?.cgColor ?? color.cgColor
-    }
-}
-
-/// Capsule chip: 1pt stroke when idle, control-background fill when selected.
+/// Capsule chip: 1pt stroke when idle, ink-selection fill when selected.
 /// Font weight is constant so selecting a chip does not change its width.
 ///
 /// `refusesFirstResponder = true` is the load-bearing bit: clicking a chip
@@ -122,9 +62,7 @@ final class ScopeChipButton: NSButton {
         }
     }
 
-    /// Fixed slot for the leading symbol so swapping glyphs of different
-    /// widths (eye / eye.slash) never shifts the title or the chip width.
-    private static let symbolSlot = NSSize(width: 16, height: 12)
+    private static var symbolSlot: NSSize { Theme.Size.symbolSlot }
 
     /// Tinted glyphs keyed by symbol | enabled state | appearance name: the
     /// tint is baked under the appearance current at draw time, so a new
@@ -137,7 +75,7 @@ final class ScopeChipButton: NSButton {
         if let cached = tintedSymbols[key] { return cached }
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)) else { return nil }
-        let tinted = symbol.tinted(enabled ? .labelColor : .tertiaryLabelColor, centeredIn: symbolSlot)
+        let tinted = symbol.tinted(enabled ? Theme.Ink.primary : Theme.Ink.tertiary, centeredIn: symbolSlot)
         tintedSymbols[key] = tinted
         return tinted
     }
@@ -151,7 +89,7 @@ final class ScopeChipButton: NSButton {
         chipCell.showsStateBy = []
         chipCell.alignment = .left
         chipCell.title = title
-        chipCell.font = LayoutChrome.chipFont
+        chipCell.font = Theme.Typography.chip
         cell = chipCell
         isBordered = false
         wantsLayer = true
@@ -248,11 +186,11 @@ final class ScopeChipButton: NSButton {
 
     override var intrinsicContentSize: NSSize {
         let width = ceil(attributedTitle.size().width)
-        var total = width + LayoutChrome.chipTitlePadding
+        var total = width + Theme.Size.chipTitlePadding
         if prefersSquare {
-            total = max(total, LayoutChrome.chipHeight)
+            total = max(total, Theme.Size.chipHeight)
         }
-        return NSSize(width: total, height: LayoutChrome.chipHeight)
+        return NSSize(width: total, height: Theme.Size.chipHeight)
     }
 
     override func layout() {
@@ -267,8 +205,8 @@ final class ScopeChipButton: NSButton {
 
     func applyAppearance() {
         let highlighted = symbolName == nil && (isSelectedScope || isDropHighlighted)
-        let color: NSColor = isEnabled ? .labelColor : .tertiaryLabelColor
-        let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: LayoutChrome.chipFont]
+        let color: NSColor = isEnabled ? Theme.Ink.primary : Theme.Ink.tertiary
+        let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: Theme.Typography.chip]
         let composed = NSMutableAttributedString()
         if let symbolName,
            let symbol = Self.tintedSymbol(symbolName, enabled: isEnabled, in: effectiveAppearance) {
@@ -277,7 +215,7 @@ final class ScopeChipButton: NSButton {
             let attachment = NSTextAttachment()
             let size = Self.symbolSlot
             attachment.image = symbol
-            attachment.bounds = NSRect(x: 0, y: (LayoutChrome.chipFont.capHeight - size.height) / 2, width: size.width, height: size.height)
+            attachment.bounds = NSRect(x: 0, y: (Theme.Typography.chip.capHeight - size.height) / 2, width: size.width, height: size.height)
             composed.append(NSAttributedString(attachment: attachment))
             if !baseTitle.isEmpty {
                 composed.append(NSAttributedString(string: " ", attributes: attributes))
@@ -288,7 +226,7 @@ final class ScopeChipButton: NSButton {
         invalidateIntrinsicContentSize()
         alphaValue = isEnabled ? 1 : 0.45
         if let layer {
-            ChipChrome.paint(layer, selected: highlighted, in: effectiveAppearance)
+            Theme.Chip.paint(layer, selected: highlighted, in: effectiveAppearance)
         }
     }
 
@@ -313,7 +251,7 @@ final class ScopeChipButton: NSButton {
 private final class ScopeChipButtonCell: NSButtonCell {
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         let size = attributedTitle.size()
-        let pad = LayoutChrome.chipTitlePadding / 2
+        let pad = Theme.Size.chipTitlePadding / 2
         let y = ((rect.height - size.height) / 2).rounded(.toNearestOrAwayFromZero)
         if (controlView as? ScopeChipButton)?.prefersSquare == true {
             let x = ((rect.width - size.width) / 2).rounded(.toNearestOrAwayFromZero)

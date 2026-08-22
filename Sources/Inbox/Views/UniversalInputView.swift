@@ -4,9 +4,6 @@ import AppKit
 /// field creates and searches, and a magnifying glass would read as
 /// search-only.
 final class UniversalInputView: NSView {
-    static let chromeHeight: CGFloat = 48
-    static let cornerRadius: CGFloat = 12
-
     let textField = NSTextField()
     private let chrome = GlassCapsuleView()
 
@@ -24,7 +21,7 @@ final class UniversalInputView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
 
-        chrome.cornerRadius = Self.cornerRadius
+        chrome.cornerRadius = Theme.Radius.input
         chrome.translatesAutoresizingMaskIntoConstraints = false
         addSubview(chrome)
         NSLayoutConstraint.activate([
@@ -35,7 +32,8 @@ final class UniversalInputView: NSView {
         ])
 
         textField.placeholderString = "Record or search…"
-        textField.font = .systemFont(ofSize: 16)
+        textField.font = Theme.Typography.input
+        textField.textColor = Theme.Ink.primary
         textField.isBordered = false
         textField.focusRingType = .none
         textField.drawsBackground = false

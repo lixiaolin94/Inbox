@@ -7,7 +7,6 @@ final class GroupHeaderCellView: NSTableCellView {
     private let titleLabel = FlushLabel(labelWithString: "")
     private let disclosureView = NSImageView()
     private var titleLeadingConstraint: NSLayoutConstraint!
-    private static let disclosureSize: CGFloat = 12
 
     var onToggle: (() -> Void)?
     var onBuildMenu: (() -> NSMenu?)?
@@ -23,14 +22,14 @@ final class GroupHeaderCellView: NSTableCellView {
     }
 
     private func setUpViews() {
-        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        titleLabel.textColor = .tertiaryLabelColor
+        titleLabel.font = Theme.Typography.groupHeader
+        titleLabel.textColor = Theme.Ink.tertiary
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         disclosureView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-        disclosureView.contentTintColor = .tertiaryLabelColor
+        disclosureView.contentTintColor = Theme.Ink.tertiary
         disclosureView.imageScaling = .scaleProportionallyDown
         disclosureView.translatesAutoresizingMaskIntoConstraints = true
 
@@ -43,28 +42,28 @@ final class GroupHeaderCellView: NSTableCellView {
 
         titleLeadingConstraint = titleLabel.leadingAnchor.constraint(
             equalTo: leadingAnchor,
-            constant: LayoutChrome.contentInset
+            constant: Theme.Size.contentInset
         )
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 28),
+            heightAnchor.constraint(equalToConstant: Theme.Size.groupHeaderHeight),
 
             titleLeadingConstraint,
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             titleLabel.trailingAnchor.constraint(
                 lessThanOrEqualTo: trailingAnchor,
-                constant: -(LayoutChrome.contentInset + Self.disclosureSize + 8 + LayoutChrome.disclosureNudge)
+                constant: -(Theme.Size.contentInset + Theme.Size.disclosureSize + Theme.Spacing.md + Theme.Size.disclosureNudge)
             )
         ])
     }
 
     override func layout() {
         super.layout()
-        let leading = LayoutChrome.leadingConstant(for: self)
+        let leading = Theme.Size.leadingConstant(for: self)
         if abs(titleLeadingConstraint.constant - leading) > 0.5 {
             titleLeadingConstraint.constant = leading
         }
-        let size = Self.disclosureSize
-        let trailingPad = -LayoutChrome.trailingConstant(for: self) + LayoutChrome.disclosureNudge
+        let size = Theme.Size.disclosureSize
+        let trailingPad = -Theme.Size.trailingConstant(for: self) + Theme.Size.disclosureNudge
         disclosureView.frame = NSRect(
             x: bounds.width - trailingPad - size,
             y: ((bounds.height - size) / 2).rounded(.toNearestOrAwayFromZero),

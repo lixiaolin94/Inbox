@@ -30,13 +30,6 @@ final class RecordSortTests: XCTestCase {
         XCTAssertEqual(RecordSort.newestFirst.sorted([a, b, c]).map(\.id), ["b", "c", "a"])
     }
 
-    func testOldestFirstOrdersByCreatedAtAscending() {
-        let a = record("a", createdAt: 100)
-        let b = record("b", createdAt: 300)
-        let c = record("c", createdAt: 200)
-        XCTAssertEqual(RecordSort.oldestFirst.sorted([a, b, c]).map(\.id), ["a", "c", "b"])
-    }
-
     func testPriorityOrdersP0ToP3() {
         let p3 = record("p3", priority: 3, createdAt: 400)
         let p0 = record("p0", priority: 0, createdAt: 100)
@@ -62,7 +55,6 @@ final class RecordSortTests: XCTestCase {
         let a = record("a", priority: 1, createdAt: 100)
         let b = record("b", priority: 1, createdAt: 100)
         XCTAssertEqual(RecordSort.newestFirst.sorted([a, b]).map(\.id), ["a", "b"])
-        XCTAssertEqual(RecordSort.oldestFirst.sorted([b, a]).map(\.id), ["b", "a"])
         XCTAssertEqual(RecordSort.priority.sorted([a, b]).map(\.id), ["a", "b"])
     }
 }

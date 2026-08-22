@@ -14,7 +14,7 @@ import AppKit
 final class MainViewController: NSViewController {
     let store: RecordStore
     let trashViewController: TrashViewController
-    /// Window-level undo stack for Move to Trash only (PRD §8.8). Field
+    /// Window-level undo stack for Move / Resolve / Move to Trash. Field
     /// editors keep their own undo managers, so typing Undo does not mix
     /// with this stack.
     private let deleteUndoManager = UndoManager()
@@ -24,7 +24,10 @@ final class MainViewController: NSViewController {
     var inputField: NSTextField { universalInput.textField }
     let scopeBar = ScopeBarView()
     let tableView = RecordTableView()
-    let scrollView = NSScrollView()
+    let scrollView = OverlayScrollView()
+    /// The one hard line on the surface (ui.md §3), between Input and the
+    /// Scope Bar; the list's other edges dissolve under the bars instead.
+    private(set) lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: Theme.Size.utilityBarHeight)
     /// Bottom-bar controls are the same custom chip as the Scope Bar, on
     /// purpose: measured against platform accessory-bar NSButtons the chip
     /// paints ~3–8 ms faster on first draw and ~2 ms per redraw each, and
@@ -37,6 +40,16 @@ final class MainViewController: NSViewController {
     let conflictsChip = ScopeChipButton(title: "")
     let offlineNoticeLabel = NSTextField(labelWithString: "iCloud unavailable · offline")
     let trashButton = ScopeChipButton(title: "Trash")
+    /// Function group (left) and key-hint group (right) of the utility bar
+    /// (ui.md §5). Stacks, so a hidden Conflicts chip or hint bar leaves
+    /// no gap behind.
+    let functionGroup = NSStackView()
+    let hintGroup = NSStackView()
+    let hintBar = HintBarView()
+    /// Hint tiers for the current focus state, widest first; `fitHints`
+    /// shows the first one that fits beside the function group.
+    private var hintTiers: [[HintBarView.Hint]] = []
+    private var hintFitWidth: CGFloat?
 
     var records: [Record] = []
     /// Both halves of every unresolved conflict pair in `records` (PRD
@@ -70,7 +83,9 @@ final class MainViewController: NSViewController {
     /// Non-nil while a row's Content is in Inline Edit (PRD §8.5). This is
     /// the third focus state beyond Input Focus / Row Focus. It is a table
     /// row index, never a `records` array index — convert via `record(atTableRow:)`.
-    var editingRowIndex: Int?
+    var editingRowIndex: Int? {
+        didSet { refreshHints() }
+    }
 
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("RecordCell")
     private static let headerCellIdentifier = NSUserInterfaceItemIdentifier("GroupHeaderCell")
@@ -79,6 +94,11 @@ final class MainViewController: NSViewController {
         self.store = store
         self.trashViewController = TrashViewController(store: store)
         super.init(nibName: nil, bundle: nil)
+        // Registrations land in async store completions, so event-based
+        // grouping is meaningless here and merged steps under a nested run
+        // loop (Resolve + Trash became one ⌘Z in --ui-smoke). Every action
+        // opens and closes its own group in `registerUndoStep`.
+        deleteUndoManager.groupsByEvent = false
     }
 
     override var undoManager: UndoManager? {
@@ -90,7 +110,7 @@ final class MainViewController: NSViewController {
     }
 
     override func loadView() {
-        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: MainWindowGeometry.defaultContentSize))
+        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: Theme.Size.windowDefault))
         effect.material = .sidebar
         effect.blendingMode = .behindWindow
         effect.state = .active
@@ -142,6 +162,12 @@ final class MainViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         focusInputAtEnd()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        listDissolve.update()
+        fitHints()
     }
 
     // MARK: - Set up
@@ -212,9 +238,6 @@ final class MainViewController: NSViewController {
         tableView.onRequestBeginInlineEdit = { [weak self] row in
             self?.beginInlineEdit(atRow: row)
         }
-        tableView.onRequestMoveMenu = { [weak self] rows in
-            self?.popMoveMenu(forRows: rows)
-        }
         tableView.isNavigableRow = { [weak self] row in
             self?.record(atTableRow: row) != nil
         }
@@ -233,8 +256,11 @@ final class MainViewController: NSViewController {
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets()
+        // The bars overlay the list's ends (ui.md §4): content rests just
+        // inside them and the overlay scroller stays clear of both.
+        let barInsets = NSEdgeInsets(top: Theme.Size.scopeBarHeight, left: 0, bottom: Theme.Size.utilityBarHeight, right: 0)
+        scrollView.contentInsets = barInsets
+        scrollView.scrollerInsets = barInsets
         scrollView.drawsBackground = false
         scrollView.contentView.drawsBackground = false
         scrollView.contentView.backgroundColor = .clear
@@ -254,59 +280,95 @@ final class MainViewController: NSViewController {
     private func setUpUtilityBar() {
         applyResolvedChipSymbol()
         resolvedChip.onClick = { [weak self] in self?.toggleShowResolved() }
-        resolvedChip.translatesAutoresizingMaskIntoConstraints = false
         resolvedChip.setContentHuggingPriority(.required, for: .horizontal)
 
         sortChip.chipTitle = sortOrder.chipTitle
-        sortChip.onClick = { [weak self] in self?.presentSortMenu() }
-        sortChip.translatesAutoresizingMaskIntoConstraints = false
+        sortChip.toolTip = "Sort: Newest ⇄ Priority"
+        sortChip.onClick = { [weak self] in self?.toggleSort() }
         sortChip.setContentHuggingPriority(.required, for: .horizontal)
 
         conflictsChip.symbolName = "exclamationmark.triangle"
         conflictsChip.isHidden = true
         conflictsChip.onClick = { [weak self] in self?.toggleShowOnlyConflicts() }
-        conflictsChip.translatesAutoresizingMaskIntoConstraints = false
         conflictsChip.setContentHuggingPriority(.required, for: .horizontal)
 
         trashButton.onClick = { [weak self] in self?.openTrash() }
-        trashButton.translatesAutoresizingMaskIntoConstraints = false
         trashButton.setContentHuggingPriority(.required, for: .horizontal)
 
         offlineNoticeLabel.font = .systemFont(ofSize: 11)
         offlineNoticeLabel.textColor = .secondaryLabelColor
         offlineNoticeLabel.isHidden = true
-        offlineNoticeLabel.translatesAutoresizingMaskIntoConstraints = false
         offlineNoticeLabel.setContentHuggingPriority(.required, for: .horizontal)
         offlineNoticeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        functionGroup.orientation = .horizontal
+        functionGroup.alignment = .centerY
+        functionGroup.spacing = Theme.Size.chipSpacing
+        functionGroup.translatesAutoresizingMaskIntoConstraints = false
+        for chip in [resolvedChip, sortChip, conflictsChip, trashButton] {
+            functionGroup.addArrangedSubview(chip)
+        }
+
+        hintGroup.orientation = .horizontal
+        hintGroup.alignment = .centerY
+        hintGroup.spacing = Theme.Spacing.md
+        hintGroup.translatesAutoresizingMaskIntoConstraints = false
+        hintGroup.addArrangedSubview(offlineNoticeLabel)
+        hintGroup.addArrangedSubview(hintBar)
+
         utilityBar.translatesAutoresizingMaskIntoConstraints = false
-        utilityBar.addSubview(resolvedChip)
-        utilityBar.addSubview(sortChip)
-        utilityBar.addSubview(conflictsChip)
-        utilityBar.addSubview(offlineNoticeLabel)
-        utilityBar.addSubview(trashButton)
+        utilityBar.addSubview(functionGroup)
+        utilityBar.addSubview(hintGroup)
 
         NSLayoutConstraint.activate([
-            resolvedChip.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: LayoutChrome.contentInset),
-            resolvedChip.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+            functionGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.contentInset),
+            functionGroup.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
 
-            trashButton.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -LayoutChrome.contentInset),
-            trashButton.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
-
-            sortChip.leadingAnchor.constraint(equalTo: resolvedChip.trailingAnchor, constant: LayoutChrome.chipSpacing),
-            sortChip.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
-
-            conflictsChip.leadingAnchor.constraint(equalTo: sortChip.trailingAnchor, constant: LayoutChrome.chipSpacing),
-            conflictsChip.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
-
-            offlineNoticeLabel.trailingAnchor.constraint(equalTo: trashButton.leadingAnchor, constant: -8),
-            offlineNoticeLabel.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
-            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: conflictsChip.trailingAnchor, constant: 8)
+            hintGroup.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.contentInset),
+            hintGroup.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+            hintGroup.leadingAnchor.constraint(greaterThanOrEqualTo: functionGroup.trailingAnchor, constant: Theme.Spacing.xl)
         ])
     }
 
     func showOfflineNotice(_ visible: Bool) {
         offlineNoticeLabel.isHidden = !visible
+    }
+
+    /// Key hints follow the focus state (ui.md §5). Derived from first
+    /// responder and `editingRowIndex` at every focus move, never stored.
+    func refreshHints() {
+        let rowFocus: [HintBarView.Hint] = [("↵", "Edit"), ("␣", "Resolve"), ("⌫", "Trash")]
+        if editingRowIndex != nil {
+            hintTiers = [[("↵", "Save"), ("esc", "Cancel")]]
+        } else if view.window?.firstResponder === tableView {
+            hintTiers = [rowFocus + [("←→", "Priority")], rowFocus]
+        } else {
+            hintTiers = [[("↵", "Create"), ("↓", "List")]]
+        }
+        hintFitWidth = nil
+        fitHints()
+    }
+
+    /// Shows the widest tier that fits beside the function group, or none:
+    /// hints give way before anything else in the bar. Measured from
+    /// fitting sizes and the view width rather than subview frames, which
+    /// are a layout pass behind in `viewDidLayout`.
+    private func fitHints() {
+        var reserved = Theme.Size.contentInset + functionGroup.fittingSize.width + Theme.Spacing.xl + Theme.Size.contentInset
+        if !offlineNoticeLabel.isHidden {
+            reserved += offlineNoticeLabel.fittingSize.width + Theme.Spacing.md
+        }
+        let available = view.bounds.width - reserved
+        guard available != hintFitWidth else { return }
+        hintFitWidth = available
+        for tier in hintTiers {
+            hintBar.show(tier)
+            if hintBar.fittingSize.width <= available {
+                hintBar.isHidden = false
+                return
+            }
+        }
+        hintBar.isHidden = true
     }
 
     private func applyResolvedChipSymbol() {
@@ -346,31 +408,10 @@ final class MainViewController: NSViewController {
         }
     }
 
-    /// Long names in the menu, checkmark on the current sort; the chip
-    /// face shows the short `chipTitle`. Built per click — an NSMenu is
-    /// cheap (<1 ms), a resident NSPopUpButton is not.
-    func makeSortMenu() -> NSMenu {
-        let menu = NSMenu()
-        for order in RecordSort.allCases {
-            let item = NSMenuItem(title: order.menuTitle, action: #selector(sortMenuChosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = order
-            item.state = order == sortOrder ? .on : .off
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    private func presentSortMenu() {
-        let point = NSPoint(x: 0, y: sortChip.bounds.height + 4)
-        makeSortMenu().popUp(positioning: nil, at: point, in: sortChip)
-    }
-
-    @objc func sortMenuChosen(_ sender: NSMenuItem) {
-        guard let selected = sender.representedObject as? RecordSort,
-              selected != sortOrder else { return }
-        sortOrder = selected
-        sortChip.chipTitle = selected.chipTitle
+    /// The sort chip is a two-state toggle (Newest ⇄ Priority); no menu.
+    func toggleSort() {
+        sortOrder = sortOrder.next
+        sortChip.chipTitle = sortOrder.chipTitle
         Preferences.sortOrder = sortOrder
         performSearch(term: inputField.stringValue, preservingFocus: true)
     }
@@ -387,52 +428,37 @@ final class MainViewController: NSViewController {
         mainSurface.clipsToBounds = false
         view.addSubview(mainSurface)
 
-        let topSeparator = NSBox()
-        topSeparator.boxType = .separator
-        topSeparator.translatesAutoresizingMaskIntoConstraints = false
-
-        let bottomSeparator = NSBox()
-        bottomSeparator.boxType = .separator
-        bottomSeparator.translatesAutoresizingMaskIntoConstraints = false
-
-        // Input last so its glass shadow paints over the Scope Bar instead
-        // of being covered by the bar's clip view.
-        mainSurface.addSubview(scopeBar)
-        mainSurface.addSubview(topSeparator)
+        // The list spans Input→bottom and goes in first; the Scope Bar
+        // and utility bar are transparent overlays over its ends (ui.md
+        // §4). Input last so its glass shadow paints over the Scope Bar.
         mainSurface.addSubview(scrollView)
-        mainSurface.addSubview(bottomSeparator)
+        mainSurface.addSubview(scopeBar)
         mainSurface.addSubview(utilityBar)
         mainSurface.addSubview(universalInput)
 
         NSLayoutConstraint.activate([
-            universalInput.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: 16),
-            universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -16),
-            universalInput.heightAnchor.constraint(equalToConstant: UniversalInputView.chromeHeight),
+            universalInput.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.md),
+            universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: Theme.Size.contentInset),
+            universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -Theme.Size.contentInset),
+            universalInput.heightAnchor.constraint(equalToConstant: Theme.Size.inputHeight),
 
-            scopeBar.topAnchor.constraint(equalTo: universalInput.bottomAnchor, constant: LayoutChrome.neighborGap),
-            scopeBar.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
-            scopeBar.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
-            scopeBar.heightAnchor.constraint(equalToConstant: 36),
-
-            topSeparator.topAnchor.constraint(equalTo: scopeBar.bottomAnchor, constant: LayoutChrome.neighborGap),
-            topSeparator.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
-            topSeparator.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
-
-            scrollView.topAnchor.constraint(equalTo: topSeparator.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: universalInput.bottomAnchor, constant: Theme.Spacing.md),
             scrollView.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomSeparator.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: mainSurface.bottomAnchor),
 
-            bottomSeparator.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
-            bottomSeparator.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
+            scopeBar.topAnchor.constraint(equalTo: universalInput.bottomAnchor, constant: Theme.Spacing.md),
+            scopeBar.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
+            scopeBar.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
+            scopeBar.heightAnchor.constraint(equalToConstant: Theme.Size.scopeBarHeight),
 
-            utilityBar.topAnchor.constraint(equalTo: bottomSeparator.bottomAnchor),
             utilityBar.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor),
             utilityBar.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor),
             utilityBar.bottomAnchor.constraint(equalTo: mainSurface.bottomAnchor),
-            utilityBar.heightAnchor.constraint(equalToConstant: 36)
+            utilityBar.heightAnchor.constraint(equalToConstant: Theme.Size.utilityBarHeight)
         ])
+        listDissolve.update()
+        refreshHints()
     }
 
     private func setUpTrashSurface() {
@@ -463,6 +489,7 @@ final class MainViewController: NSViewController {
             let end = editor.string.utf16.count
             editor.selectedRange = NSRange(location: end, length: 0)
         }
+        refreshHints()
     }
 
     private func focusFirstRow() {
@@ -470,6 +497,7 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
+        refreshHints()
     }
 
     /// Focus inheritance (PRD §8.6) walks the visible Record sequence, not
@@ -499,6 +527,7 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
+        refreshHints()
     }
 
     /// Multi-select counterpart of `returnFocusToRow`: re-selects every id
@@ -519,6 +548,7 @@ final class MainViewController: NSViewController {
         window.makeFirstResponder(tableView)
         tableView.selectRowIndexes(indexes, byExtendingSelection: false)
         tableView.scrollRowToVisible(first)
+        refreshHints()
     }
 
     // MARK: - Search
@@ -653,10 +683,16 @@ final class MainViewController: NSViewController {
     }
 
     func refreshVisibleSurface() {
+        refreshVisibleSurface(selecting: [])
+    }
+
+    /// Re-syncs from the DB and, on the main surface, puts Focus on `ids`
+    /// if they are visible (undo brings rows back where they were).
+    func refreshVisibleSurface(selecting ids: [String]) {
         if isShowingTrash {
             trashViewController.reload(projects: projects)
         } else {
-            performSearch(term: inputField.stringValue, preservingFocus: true)
+            performSearch(term: inputField.stringValue, preservingFocus: true, selectRecordIDs: ids)
         }
     }
 }
@@ -668,6 +704,7 @@ extension MainViewController: NSTextFieldDelegate {
     /// the Row Focus selection here too.
     func controlTextDidBeginEditing(_ obj: Notification) {
         tableView.deselectAll(nil)
+        refreshHints()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -727,4 +764,14 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposedSelectionIndexes: IndexSet) -> IndexSet {
         IndexSet(proposedSelectionIndexes.filter { record(atTableRow: $0) != nil })
     }
+
+    /// A click on a row moves first responder and the selection in one go;
+    /// this is the one hook both share.
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        refreshHints()
+    }
 }
+
+/// 1 pt of `Theme.Ink.hairline`. Painted in `updateLayer` so the dynamic
+/// colour is resolved under the view's effective appearance and follows
+/// light/dark on its own.

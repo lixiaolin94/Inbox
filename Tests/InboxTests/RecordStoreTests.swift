@@ -249,12 +249,12 @@ final class RecordStoreTests: XCTestCase {
         )
     }
 
-    func testOldestFirstSearchReturnsCreationOrder() throws {
+    func testNewestFirstSearchReturnsReverseCreationOrder() throws {
         try createSync("first")
         try createSync("second")
         try createSync("third")
-        let results = try searchSync("", sortOrder: .oldestFirst)
-        XCTAssertEqual(results.map(\.content), ["first", "second", "third"])
+        let results = try searchSync("", sortOrder: .newestFirst)
+        XCTAssertEqual(results.map(\.content), ["third", "second", "first"])
     }
 
     func testPrioritySearchOrdersP0ToP3WithNewestFirstTieBreak() throws {

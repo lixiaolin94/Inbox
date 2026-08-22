@@ -19,7 +19,10 @@
 | feat R2 沉浸与多行 | 无标题沉浸窗口、iCloud Sync 菜单开关 + 账号不可用离线标签、列表多行换行（Priority/时间与首行基线对齐）、输入框超长单行尾部聚焦、拖 Record 到 Scope Bar chip | 流水线：Fable 协调/验收，Grok 4.6 执行，GPT-5.6-sol 审查 | `f780dcf` |
 | feat R3 玻璃视觉与 Settings | 全窗 sidebar 材质 + fullSizeContentView、玻璃胶囊 Universal Input/Scope chip、透明行背景与行距、Record 字号偏好即时生效、Settings 窗口（⌘,：字号/Launch at Login/iCloud Sync，替代 App 菜单开关）、Titlebar 系统填充隐藏（Tahoe workaround） | 用户直连迭代（护栏文件），Fable 验收合并 | `633ea09` |
 | feat R4 UI chrome 对齐 | 描边 chip 与 symbol 切换（Resolved 眼睛 / `+` 圆形）、排序 chip 与 Resolved 同侧、菜单栏实心图标左键开窗右键菜单、多行自适应 Inline Edit、Scope Bar 仅横向滚动 + 尾部渐隐 + `+` 固定右缘、行选中上下对称、Trash 行正常色且无默认分组、去掉 Resolved 标题行、Record 字号跟随系统 body | 用户直连迭代，Fable 执行/验收合并 | `020e007` |
-| feat R9 发布准备（第一轮） | CloudKit 容器环境按构建配置取值（Debug=Development / Release=Production）；File 菜单导出（JSON 全量 / `VACUUM INTO` 快照 / Show Data in Finder）；Settings 显示上次同步成功时间与最近终端错误（无轮询）；搜索规模复查（LIKE 保留，见性能基线）；`--ui-smoke --snapshot-dir` 像素快照与像素对齐断言；**像素审查修复**：换行行在窗口改宽后不重测（reload 重测，live resize 中只用 grow-only note）、显示态测量改用 `NSTextFieldCell.cellSize` 与绘制一致（304 pt 时 boundingRect 少算一行导致末行被裁）、Input 取得焦点时清掉残留的灰色选区、Inline Edit 编辑器 2 pt 左偏、Trash 长文本裁切改省略号；冲突中心（schema v4 `conflict_of` 随 CloudKit 同步、`listConflicts` / `resolveConflict` 无损三选、行内弱化 Conflict 标记、底栏 N conflicts 过滤 chip、右键 Resolve Conflict） | 流水线：4 个执行者并行（worktree），Fable 审阅/集成/四道门/文档 | 待合并 |
+| feat R12 撤销与排序 | ⌘Z 覆盖 Resolve/Reopen 与 Move（改 Project），与 Move to Trash 同一栈；去掉 `M` 快捷键（Move 只走右键/拖拽）；排序去掉 Oldest，排序 chip 改为 Newest ⇄ Priority 两态切换、不再弹菜单；冒烟新增撤销链路与排序切换断言 | Fable 直接修 | 待合并 |
+| ui R11 上屏反馈 | 用户上屏后反馈：滚动条白底灰条不自动隐藏（legacy 样式被系统首选覆盖）→ `OverlayScrollView` 强制 overlay；去掉最后一条分割线；组头 chevron 与 "+" 同心（按 chip 真实宽度算 nudge）；选中块左右边缘锚定 Input 胶囊（窗口坐标），滚动条不影响 | Fable 直接修，快照验收 | `f74be20` |
+| ui R10 视觉语言 | 参考 tinycast 的设计系统后确立 docs/ui.md：`Theme.swift` 单一令牌源（Spacing/Radius/Size/Ink/Typography，快照逐字节一致）；墨色透明度阶梯代替系统灰；Row Focus 改 10% 墨色圆角块、文字不反白；圆角阶梯；Input 下唯一发丝线，列表占满并从透明的 Scope Bar / 底栏下穿过，上下边缘溶解（滚动驱动的 `CAGradientLayer` 遮罩）；底栏左功能组（Resolved/Sort/Conflicts/Trash）右按键提示组 | 流水线：令牌收口 1 个执行者先行，再 2 个执行者按 Views / Surfaces 边界并行；Fable 看快照验收 | `279e106` |
+| feat R9 发布准备（第一轮） | CloudKit 容器环境按构建配置取值（Debug=Development / Release=Production）；File 菜单导出（JSON 全量 / `VACUUM INTO` 快照 / Show Data in Finder）；Settings 显示上次同步成功时间与最近终端错误（无轮询）；搜索规模复查（LIKE 保留，见性能基线）；`--ui-smoke --snapshot-dir` 像素快照与像素对齐断言；**像素审查修复**：换行行在窗口改宽后不重测（reload 重测，live resize 中只用 grow-only note）、显示态测量改用 `NSTextFieldCell.cellSize` 与绘制一致（304 pt 时 boundingRect 少算一行导致末行被裁）、Input 取得焦点时清掉残留的灰色选区、Inline Edit 编辑器 2 pt 左偏、Trash 长文本裁切改省略号；冲突中心（schema v4 `conflict_of` 随 CloudKit 同步、`listConflicts` / `resolveConflict` 无损三选、行内弱化 Conflict 标记、底栏 N conflicts 过滤 chip、右键 Resolve Conflict） | 流水线：4 个执行者并行（worktree），Fable 审阅/集成/四道门/文档 | `a3dc4f6` |
 | polish R8 遗留收口 | 删 `onRequestEscape` 死闭包 + Trash 表面 Esc 冒烟；`ClearTableRowView`/`frameOfCell` 复审（26.6 仍需要，去掉后文字轨 25→31）；`TitlebarBackdrop` 复审（26.6 上为空操作，保留并加探针断言作为复审机制）；warm 激活计时进冒烟（中位 11 ms，100 ms 门槛）；`NSOutlineView` 微基准后否决 | Fable 逐项执行 | `4f5cb75` |
 | ui R7 键位与底栏结论 | `RecordTableView` 改按 `specialKey`/字符判定（修非美式布局 `M`，⌘M 显式排除）；冒烟新增 `stepUtilityBar` 并修正 `←` 事件缺字符；**底栏换平台 `NSButton` 的实验做完并否决**（A/B 与微基准见性能基线）——底栏与 Trash 动作栏保留 `ScopeChipButton`，排序菜单改为点击时构建 | 流水线：2 个执行者并行（worktree）做实验版，Fable A/B 计时、微基准、最终从 main 重开分支只保留有价值的部分 | `e12fd37` |
 | perf R6 启动与体积 | 同步引擎/状态栏项推迟到首帧后、诊断运行器 `#if DEBUG`、Release 仅 arm64 + `-Osize`、chip symbol 缓存与 chip 复用、cell 文本测量缓存、DateFormatter 复用、SQLite WAL + synchronous=NORMAL、折叠集每次重建只读一次 | 流水线：4 个执行者并行（各自 worktree），Fable 审阅/集成/四道门 | `dafd4f3` |
@@ -37,6 +40,8 @@
 6. **窗口坍缩事故（重要教训）**：顶层 surface 四边用 Auto Layout 钉在 content view 上会让 NSWindow 持续吸附 fitting size——约束链没人提供宽度时窗口坍缩到 28pt，`setContentSize` 会被弹回，`preferredContentSize` 又会把尺寸钉死。现方案：顶层 autoresizing + 挂载后 setContentSize + `constrainFrameRect` 套 minSize。**UI 几何类改动必须在 UISmokeRunner 加断言。**
 7. **xcodeproj 入库**：为了 clone 即开。project.yml 是唯一权威，改配置必须走它（含 Xcode 界面里点的签名设置——点完要回填）。源文件按目录收录，但生成的 pbxproj 逐文件列出，所以增删 Swift 文件也要重新生成。
 8. **留在 AppKit，不迁 SwiftUI/GPUI**（2026-08-22 复核）：键盘语义与启动体积是产品核心，AppKit 是唯一能同时满足的选择；理由与对比见 ARCHITECTURE §7。打磨方向是减少自绘、多用平台组件（ARCHITECTURE §8 候选清单）。
+11. **内存口径（2026-08-22）**：Activity Monitor「Memory」列 = `phys_footprint`（`footprint -p <pid>`），不是 RSS。Inbox Release 25 MB（最小 AppKit 窗口 17 MB）；tinycast 官网截图 72.6 MB 是同一口径。之前记的 91 MB RSS 含共享框架页，不可比。
+12. **视觉语言来源（R10）**：tinycast（SwiftUI，57k 行，macOS 26+）的 `docs/ui.md` + `Theme.swift` 是很好的"设计系统写法"范本——一段话说清外观、一条墨色阶梯、令牌单源、不可变项清单、边缘溶解参数（顶 栏高+32 / min 0.15，底 栏高+28 / min 0.25）。我们采纳了写法与阶梯思想，**没有**采纳它的无边框面板形态、自绘对话框和 latest-only 策略（常驻窗口是 PRD 定的产品形态；平台组件优先与 macOS 14 下限是既定决策）。
 10. **性能审计方法（2026-08-22，留作后续对比）**：启动用"spawn → 首个 layer-0 窗口出现"计时（轮询 `CGWindowListCopyWindowInfo`，脚本 ~40 行，不入库），对照一个 56 KB 的最小 AppKit 窗口程序作平台底价；体积看 `strip -x` 后的单架构二进制；内存看启动 2 s 后的 RSS；剖析用 xctrace Time Profiler，**注意 xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包——要复制 Release 包改 CFBundleIdentifier 并 ad-hoc 重签后再录**。决策记录：最低版本保持 macOS 14、整窗 behind-window 模糊保留（产品选择）、只发 arm64。
 9. **控制器按关注点拆 extension 文件而不是抽新层**：`MainViewController` 1574 行拆为核心 + `+Records` + `+Projects` + `+Smoke`，共享成员模块内可见。没有引入 Coordinator/Presenter——同一个 `self`，零间接层，拆分只为导航与审阅范围。弹窗进 `Dialogs`、键进 `Preferences`、扇出进 `RecordStore.batch`，三个"重新加载 Project 列表"变体合并为 `reloadProjectsAndSearch`。
 
@@ -65,7 +70,8 @@
 | 指标 | 最小 AppKit 窗口 | R5（优化前） | R6（优化后） |
 |---|---|---|---|
 | spawn → 出窗 中位数 | 180–186 ms | 294 ms（.app）/ 258 ms（裸） | **278 ms（.app）/ 245 ms（裸）** |
-| RSS（启动 2 s 后） | 78 MB | 92 MB | 91 MB |
+| RSS（启动 2 s 后，含共享框架页） | 78 MB | 92 MB | 91 MB |
+| **phys_footprint**（Activity Monitor「Memory」列口径，`footprint -p`） | 17 MB | — | **25 MB**（12 线程） |
 | 发布二进制（strip 后） | — | 2.4 MB universal 未 strip；单架构 754 KB | **569 KB**（arm64，`-Osize`，无诊断代码） |
 | 单条写事务 | — | 0.33 ms（rollback journal） | 0.05 ms（WAL） |
 

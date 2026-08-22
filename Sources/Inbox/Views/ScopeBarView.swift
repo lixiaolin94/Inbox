@@ -10,7 +10,7 @@ final class ScopeBarView: NSView {
     var onBuildProjectMenu: ((String) -> NSMenu?)?
     var onDropRecords: (([String], String?) -> Void)?
 
-    static var chipRowInset: CGFloat { LayoutChrome.contentInset }
+    static var chipRowInset: CGFloat { Theme.Size.contentInset }
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
@@ -43,7 +43,7 @@ final class ScopeBarView: NSView {
     private func setUp() {
         stack.orientation = .horizontal
         stack.alignment = .centerY
-        stack.spacing = LayoutChrome.chipSpacing
+        stack.spacing = Theme.Size.chipSpacing
         // Trailing inset equals the fade so the last chip can rest clear of it.
         stack.edgeInsets = NSEdgeInsets(top: 0, left: Self.chipRowInset, bottom: 0, right: Self.edgeFade)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -84,9 +84,9 @@ final class ScopeBarView: NSView {
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -LayoutChrome.chipSpacing),
+            scrollView.trailingAnchor.constraint(equalTo: addButton.leadingAnchor, constant: -Theme.Size.chipSpacing),
 
-            addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -LayoutChrome.contentInset),
+            addButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Size.contentInset),
             addButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             stack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),

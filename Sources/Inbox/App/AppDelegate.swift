@@ -2,12 +2,6 @@ import AppKit
 import CloudKit
 import ServiceManagement
 
-/// First-launch content size and the frame floor for resize.
-enum MainWindowGeometry {
-    static let defaultContentSize = NSSize(width: 720, height: 480)
-    static let minimumSize = NSSize(width: 480, height: 320)
-}
-
 /// Applies `minSize`/`maxSize` to `setFrame` as well as live user resize.
 /// Stock `NSWindow.constrainFrameRect` only keeps the frame on-screen.
 private final class InboxWindow: NSWindow {
@@ -74,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMainMenu()
 
         let window = InboxWindow(
-            contentRect: NSRect(origin: .zero, size: MainWindowGeometry.defaultContentSize),
+            contentRect: NSRect(origin: .zero, size: Theme.Size.windowDefault),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -86,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.isMovableByWindowBackground = true
-        window.minSize = MainWindowGeometry.minimumSize
+        window.minSize = Theme.Size.windowMinimum
         window.contentViewController = mainViewController
         // `contentViewController` assignment sizes the window to the VC's
         // `preferredContentSize` if non-zero, otherwise Auto Layout
@@ -98,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // that frame. Surfaces fill the content view via autoresizing so
         // the window is not an Auto Layout window (which would snap back
         // to fittingSize).
-        window.setContentSize(MainWindowGeometry.defaultContentSize)
+        window.setContentSize(Theme.Size.windowDefault)
         window.delegate = self
         // Hide-on-close: the same NSWindow is reused for Dock, ⌘Tab, and
         // menu-bar Open Inbox. `windowShouldClose` orders it out and

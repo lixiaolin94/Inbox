@@ -14,6 +14,7 @@
 		164A5A279C2E504DD981CA1D /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */; };
 		16D3A52A8346F2EF2C16E4F4 /* RecordSortTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7F047492510E3A2AE451EF /* RecordSortTests.swift */; };
 		1D20663C0730572F57374F96 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2521A60513E857C5E36BCA2 /* Preferences.swift */; };
+		1EA83C63187BC0E80BBC7C94 /* HintBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA349666DFA1F14399730B78 /* HintBarView.swift */; };
 		28B9DB4528B80ABB451E8561 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8445DA507D5E903F24BACE /* ProjectStore.swift */; };
 		29C9DBE3E65A187FA70EB900 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E318E3F509CD22443DEACDF /* SyncEngine.swift */; };
 		2DAB3A8A903A0014CE309501 /* RecordCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B64074B7F7A7E08B4AB652 /* RecordCellView.swift */; };
@@ -38,6 +39,7 @@
 		774A843A6C25CB2636454F6D /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF32A330494737F18DE30C76 /* RecordStore+Sync.swift */; };
 		7764D74123E2695D0366E8AE /* ScopeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B540CE6DA05F17E7A0874D /* ScopeBarView.swift */; };
 		843F3F3811C45D6866B6F737 /* ConflictMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA52F1CD7CA5E280047A347 /* ConflictMergerTests.swift */; };
+		86BC9A5365B24DE8218174C4 /* EdgeDissolve.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEDE44CF250F47BCBE14FD7 /* EdgeDissolve.swift */; };
 		87A3376D4DEFD6DCF03F4B99 /* RecordStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6563AB9338276A08F872B2DE /* RecordStoreTests.swift */; };
 		8A8E51B8B6B2A59C19D041A4 /* SyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9104E1DFEB40B49C961F5DDF /* SyncTypes.swift */; };
 		8FEDCF3F39AA44554A9D6550 /* MainViewController+Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF8A1C134414E8A0DA50FFC /* MainViewController+Projects.swift */; };
@@ -57,6 +59,7 @@
 		AF28A3FB2A3AA1F46F1A7F8E /* MainViewController+Records.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE08D385A0D02BDD2F3992D0 /* MainViewController+Records.swift */; };
 		B1A2647E208B58FC159A6256 /* SyncTrackingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250C94AC93638AC5DC76AFF9 /* SyncTrackingTests.swift */; };
 		B6BDCE0E75F4403F57975A48 /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A673436C79B1E163176EC45E /* SQLiteDatabase.swift */; };
+		B877A5480B1CE96B6A466BEE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13AF8508B3060A30447D10B /* Theme.swift */; };
 		BA4C2FD7DBB46CDE3B180845 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F362E2A3D3721C4A4332541A /* AppDelegate.swift */; };
 		C048A365667DCA811DE22505 /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF32A330494737F18DE30C76 /* RecordStore+Sync.swift */; };
 		C5074DD6E1662A921A7F8D4A /* RecordSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D0F91DF40EE5EBEB27A4C8 /* RecordSort.swift */; };
@@ -118,7 +121,10 @@
 		C29EC51B7A8B31104FFB2A34 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		C5225B709D6B760D8D584A25 /* RecordStore+Smoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecordStore+Smoke.swift"; sourceTree = "<group>"; };
 		CC8445DA507D5E903F24BACE /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		CDEDE44CF250F47BCBE14FD7 /* EdgeDissolve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeDissolve.swift; sourceTree = "<group>"; };
 		CE08D385A0D02BDD2F3992D0 /* MainViewController+Records.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MainViewController+Records.swift"; sourceTree = "<group>"; };
+		D13AF8508B3060A30447D10B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		DA349666DFA1F14399730B78 /* HintBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HintBarView.swift; sourceTree = "<group>"; };
 		E309569B184275B649A98C9E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		E82484CBE145A018A7D46247 /* ListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRow.swift; sourceTree = "<group>"; };
 		EAF9E6BC5CF5B55501C96CC5 /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
@@ -287,13 +293,16 @@
 		DC7144A0DBCC5E1ABCDB8D01 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				CDEDE44CF250F47BCBE14FD7 /* EdgeDissolve.swift */,
 				AB4A358AA10DF1992F38EBD0 /* GlassCapsuleView.swift */,
 				503C6D41D389DC2D92F8E10E /* GroupHeaderCellView.swift */,
+				DA349666DFA1F14399730B78 /* HintBarView.swift */,
 				96B64074B7F7A7E08B4AB652 /* RecordCellView.swift */,
 				2C5D062EFF3991CE8EAE33A1 /* RecordDragTypes.swift */,
 				979DEDC8005DCCC9007E5916 /* RecordTableView.swift */,
 				82B540CE6DA05F17E7A0874D /* ScopeBarView.swift */,
 				1F67BF0B5E25E3F7F4728D14 /* ScopeChipButton.swift */,
+				D13AF8508B3060A30447D10B /* Theme.swift */,
 				99030FD48CF6E70CEC3CFE5E /* UniversalInputView.swift */,
 			);
 			path = Views;
@@ -403,9 +412,11 @@
 				D61CBB503244968CA31944C0 /* CKRecordMapping.swift in Sources */,
 				5603C041EBD54D75BAB948CB /* ConflictMerger.swift in Sources */,
 				9D7FC261C078FCA36A17734C /* Dialogs.swift in Sources */,
+				86BC9A5365B24DE8218174C4 /* EdgeDissolve.swift in Sources */,
 				A2112DEBA70A964ED70864EE /* Export.swift in Sources */,
 				946369A1639B805C8CA31980 /* GlassCapsuleView.swift in Sources */,
 				AF0CB9C2BDC2EBC863DA4419 /* GroupHeaderCellView.swift in Sources */,
+				1EA83C63187BC0E80BBC7C94 /* HintBarView.swift in Sources */,
 				A79A7EFEE7C917BCA4D60139 /* LaunchConfiguration.swift in Sources */,
 				CF9F9E551E7A4DAED3FE94FC /* ListRow.swift in Sources */,
 				8FEDCF3F39AA44554A9D6550 /* MainViewController+Projects.swift in Sources */,
@@ -432,6 +443,7 @@
 				29C9DBE3E65A187FA70EB900 /* SyncEngine.swift in Sources */,
 				55C81C0A4420631EDB1C0B4E /* SyncProbeRunner.swift in Sources */,
 				8A8E51B8B6B2A59C19D041A4 /* SyncTypes.swift in Sources */,
+				B877A5480B1CE96B6A466BEE /* Theme.swift in Sources */,
 				E1CAE186AFF7B5859B5CD6C5 /* TrashViewController.swift in Sources */,
 				CC68F099270B6BF3AEAD090F /* UISmokeRunner.swift in Sources */,
 				501B3CB034A165C878AAA281 /* UniversalInputView.swift in Sources */,

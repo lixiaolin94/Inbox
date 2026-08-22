@@ -60,7 +60,36 @@ extension MainViewController {
     var smokeScopeChipUsesGlass: Bool { scopeBar.smokeChipUsesGlass() }
     var smokeIdleChipBorderColor: CGColor? { scopeBar.smokeIdleChipBorderColor() }
     var smokeIdleChipBorderWidth: CGFloat { scopeBar.smokeIdleChipBorderWidth }
-    var smokeListTopGap: CGFloat { scopeBar.frame.minY - scrollView.frame.maxY }
+    var smokeDissolveDebug: String {
+        let clip = scrollView.contentView
+        let doc = scrollView.documentView?.frame.height ?? -1
+        return String(format: "clip y %.1f h %.1f doc %.1f insets t %.0f b %.0f top %d bottom %d",
+                      clip.bounds.origin.y, clip.bounds.height, doc,
+                      scrollView.contentInsets.top, scrollView.contentInsets.bottom,
+                      listDissolve.isTopActive ? 1 : 0, listDissolve.isBottomActive ? 1 : 0)
+    }
+
+    func smokeFlashScrollers() { scrollView.flashScrollers() }
+
+    var smokeScrollFrame: NSRect { scrollView.frame }
+    var smokeScrollInsets: NSEdgeInsets { scrollView.contentInsets }
+    var smokeScrollerInsets: NSEdgeInsets { scrollView.scrollerInsets }
+    var smokeHasDissolveMask: Bool { scrollView.layer?.mask != nil }
+    var smokeDissolveState: (topActive: Bool, bottomActive: Bool) {
+        (listDissolve.isTopActive, listDissolve.isBottomActive)
+    }
+
+    /// How far the record's row sits inside the scroll view's edges: from
+    /// the top edge down to the row's top, and from the bottom edge up to
+    /// the row's bottom. At least the matching content inset means the
+    /// row is clear of the bar overlaying that edge.
+    func smokeRowClearance(forRecordID id: String) -> (top: CGFloat, bottom: CGFloat)? {
+        guard let row = tableRow(forRecordID: id) else { return nil }
+        let frame = tableView.convert(tableView.rect(ofRow: row), to: scrollView)
+        return (scrollView.bounds.maxY - frame.maxY, frame.minY - scrollView.bounds.minY)
+    }
+
+    var smokeTrashScrollInsets: NSEdgeInsets { trashViewController.smokeScrollInsets }
     var smokeTrashAllowsMultipleSelection: Bool { trashViewController.smokeAllowsMultipleSelection }
     var smokeTrashActionChips: [ScopeChipButton] { trashViewController.smokeActionChips }
 
@@ -70,18 +99,33 @@ extension MainViewController {
     var smokeSortChip: ScopeChipButton { sortChip }
     var smokeTrashChip: ScopeChipButton { trashButton }
     var smokeUtilityBarFrame: NSRect { utilityBar.frame }
-    var smokeSortMenuTitles: [String] { makeSortMenu().items.map(\.title) }
-    var smokeCheckedSortMenuTitle: String? { makeSortMenu().items.first { $0.state == .on }?.title }
 
     func smokeUtilityControlFrame(_ control: NSView) -> NSRect {
         control.convert(control.bounds, to: mainSurface)
+    }
+
+    var smokeFunctionGroupMaxX: CGFloat { smokeUtilityControlFrame(functionGroup).maxX }
+    /// "key action" per hint, empty while the bar is hidden.
+    var smokeHintTexts: [String] { hintBar.isHidden ? [] : hintBar.hintTexts }
+    var smokeHintBarFrame: NSRect? { hintBar.isHidden ? nil : smokeUtilityControlFrame(hintBar) }
+    /// Width of the tier currently loaded — the shown one, or the smallest
+    /// tried when hidden.
+    var smokeHintBarFittingWidth: CGFloat { hintBar.fittingSize.width }
+    var smokeTrashHintTexts: [String] { trashViewController.smokeHintTexts }
+
+    /// Whether a click in the middle of the hint bar would land on it.
+    var smokeHintBarTakesMouse: Bool {
+        guard let frame = smokeHintBarFrame else { return false }
+        let hit = utilityBar.hitTest(NSPoint(x: frame.midX, y: frame.midY))
+        return hit?.isDescendant(of: hintBar) ?? false
     }
 
     // MARK: Pixel alignment (window coordinates)
 
     var smokeChromeFramesInWindow: [(label: String, frame: NSRect)] {
         let chrome: [(String, NSView)] = [
-            ("input", universalInput), ("scope bar", scopeBar), ("list", scrollView), ("utility bar", utilityBar)
+            ("input", universalInput), ("scope bar", scopeBar), ("list", scrollView),
+            ("utility bar", utilityBar)
         ]
         return chrome.map { (label: $0.0, frame: $0.1.convert($0.1.bounds, to: nil)) }
     }
@@ -147,9 +191,14 @@ extension MainViewController {
         resolvedChip.onClick?()
     }
 
-    func smokeSelectSort(_ sort: RecordSort) {
-        guard let item = makeSortMenu().items.first(where: { $0.representedObject as? RecordSort == sort }) else { return }
-        sortMenuChosen(item)
+    /// Same path as clicking the sort chip.
+    func smokeToggleSort() {
+        toggleSort()
+    }
+
+    /// Programmatic Move through the same path the context menu and drag use.
+    func smokeMoveRecords(ids: [String], to projectID: String?) {
+        moveRecords(ids: ids, to: projectID)
     }
 
     private func smokeFirstGroupHeaderCell() -> GroupHeaderCellView? {

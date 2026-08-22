@@ -9,7 +9,8 @@ Inbox 是 Swift + AppKit 的 macOS 个人 Record 管理工具（Keyboard-first�
 3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) —— 分层、文件职责、线程模型、不变量、验证矩阵（**改代码前先定位到文件**）；
 4. [Inbox_macOS_MVP_PRD_v0.1.md](Inbox_macOS_MVP_PRD_v0.1.md) —— 产品语义的唯一权威（改交互前必读相关章节）；
 5. [docs/HISTORY.md](docs/HISTORY.md) —— 已做过什么、为什么这么做、遗留事项（**接小任务先查这里的清单**）；
-6. [docs/SCHEMA.md](docs/SCHEMA.md) —— 数据库结构（改存储前必读）。
+6. [docs/SCHEMA.md](docs/SCHEMA.md) —— 数据库结构（改存储前必读）；
+7. [docs/ui.md](docs/ui.md) —— 视觉语言：墨色阶梯、圆角/间距/字号令牌、不可变项、边缘溶解原理（**改任何视图或 `Theme` 值前必读**）。
 
 `docs/design/`、`docs/prompts/` 是历史迭代的设计稿与派发提示词，只作考古，不是现行约定。
 
@@ -59,7 +60,9 @@ BIN=/tmp/inbox-dd/Build/Products/Debug/Inbox.app/Contents/MacOS/Inbox
 - 冒烟合成的键盘事件必须同时带 keyCode 与字符（`RecordTableView` 按字符判定）；只给 keyCode 的事件会被表格忽略。
 - 底栏用自绘 `ScopeChipButton` 是实测后的决定（比平台 accessory-bar 按钮便宜，见 HISTORY R7），不要"顺手"换成 `NSButton`。
 - 窗口尺寸：顶层 surface 用 autoresizing 而非四边 Auto Layout 钉死——否则窗口会吸附 fitting size 坍缩（见 HISTORY「窗口坍缩事故」）。
-- `NSScrollView.contentInsets` 不会扩展滚动范围；要给内容留尾部空间得放进 document view（Scope Bar 用 stack 的 edgeInsets）。
+- `NSScrollView.contentInsets` 只有在 `contentView.automaticallyAdjustsContentInsets` 保持 `true` 时才会传到 clip view（R10 查明；之前以为它"不扩展滚动范围"）。Scope Bar 的尾部留白仍用 stack 的 edgeInsets。
+- 列表滚动视图必须是 `OverlayScrollView`：AppKit 会在系统首选样式变化（接鼠标）时把 `scrollerStyle` 改回 legacy，一次性设 `.overlay` 挡不住。
+- 列表上下用 `EdgeDissolve`（`CAGradientLayer` 作 `scrollView.layer.mask`）；这个 layer 的 unit y=0 在顶部，改遮罩先看 `main-scrolled-*` 快照核对方向。
 - xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包；剖析 Release 要复制包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`（HISTORY 决策 10）。
 - 跨 SDK 版本：macOS 27 SDK 的新成员（如 `NSGlassEffectView.effectIsInteractive`）在 26 上编译失败，`#available` 救不了编译期——用 KVC。
 - SPM 裸二进制（`swift run`）没有 bundle/entitlements：同步与 Launch at Login 自动禁用，属预期。

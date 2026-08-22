@@ -55,7 +55,7 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 | `MainViewController+Projects.swift` | Project 列表加载（唯一入口 `reloadProjectsAndSearch`）、Scope 切换与持久化、Project 新建/改名/删除/排序、All View 拖拽改 Project | Record 动作 |
 | `MainViewController+Smoke.swift` | `--ui-smoke` 的只读探针 | 生产逻辑 |
 | `TrashViewController.swift` | Trash 次级表面：列表、Restore、Permanent Delete、Esc 返回 | 撤销（复用父控制器的 UndoManager） |
-| `RecordTableView.swift` | Row Focus 键盘状态机（↑↓ 边界回 Input、←→/Space/Enter/M/⌫/⌘A/⌘C 分发、右键选区语义） | 数据 |
+| `RecordTableView.swift` | Row Focus 键盘状态机（↑↓ 边界回 Input、←→/Space/Enter/⌫/⌘A/⌘C 分发、右键选区语义；Move 无快捷键） | 数据 |
 | `RecordCellView.swift` | Record 行绘制、多行换行、Inline Edit 的 field editor 与行高自适应 | 持久化 |
 | `ScopeBarView.swift` / `ScopeChipButton.swift` | 横向 Scope 条、chip 样式与拖拽排序、`LayoutChrome` 常量 | — |
 | `Dialogs.swift` | 保存失败、Project 命名、删除确认、永久删除确认、导出保存面板 | 焦点（由调用方决定） |
@@ -80,7 +80,7 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 1. **row↔record 只经 `ListRowIndex`**。控制器里不允许手工换算索引；列表结构改动先改 `ListRows.build` 并补单测。
 2. **`searchGeneration` 是重入保护**。每次搜索递增并把 token 带回；Inline Edit 开始时也递增，这样任何迟到的搜索 completion 都不会在编辑中 `reloadData()`。
 3. **焦点继承**（Resolve/删除/移出 Scope 后）：下一条 → 上一条 → 回 Input；Show Resolved 开启时只在 Open 序列上走。规则在 `RowFocusInheritance`，调用在 `inheritFocus`/`applyResolveResult`。
-4. **Undo 只覆盖 Move to Trash**，且反向动作在 handler 开头**同步**注册（store 写入是异步的，在 completion 里注册会开新 undo 组）。
+4. **Undo 覆盖 Resolve/Reopen、Move（改 Project）、Move to Trash**（R12），Priority 与 Inline Edit 不在栈上；反向动作在 handler 开头**同步**注册（store 写入是异步的，在 completion 里注册会开新 undo 组）。Reopen 的 redo 会写入新的 `resolvedAt`，不是原时间戳。
 5. **Project 列表变更只走 `reloadProjectsAndSearch`**：它负责 Scope 失效回退到 All、刷新 Scope Bar 与 Go 菜单、保焦点重搜。
 6. **窗口顶层 surface 用 autoresizing，不用四边 Auto Layout 钉死**（否则窗口坍缩到 fitting size，见 HISTORY「窗口坍缩事故」）。内部布局仍用 Auto Layout。
 7. **No Silent Data Loss**：Create 失败把文本放回 Input；Inline Edit 空提交等同取消；任何写失败都 `refreshVisibleSurface()` 从 DB 重同步，而不是修补本地状态。
@@ -99,6 +99,8 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 - 结论：**留在 AppKit，持续瘦身**，UI 打磨方向是"更多用平台组件，更少自绘"（§8）。
 
 ## 8. UI 组件原则：平台原生优先
+
+视觉语言本身（令牌、不变量、边缘溶解）在 [docs/ui.md](ui.md)；本节只登记"哪些自绘、为什么"。
 
 规则（SPEC §9）：先找 AppKit 现成控件/样式；只有平台控件无法表达 PRD 语义**或实测更贵**时才自绘；每个自绘组件在下表登记原因，打磨阶段逐项复审。R7 的教训：系统 bezel 的绘制路径（CoreUI 素材 + 玻璃材质）比一个 CALayer 边框长得多，"平台组件 = 更快"对轻量自绘不成立——换之前先用微基准量（方法在 HISTORY 决策 10）。
 

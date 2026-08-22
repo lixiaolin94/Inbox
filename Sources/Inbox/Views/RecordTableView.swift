@@ -11,8 +11,8 @@ import AppKit
 /// - Space toggles Resolve / Reopen;
 /// - Enter requests Inline Edit (single selection only);
 /// - ⇧↑ / ⇧↓ extend the selection over navigable rows, ⌘A selects every
-///   Record row — batch actions (Space / ←→ / ⌫ / M / copy) then apply to
-///   the whole selection.
+///   Record row — batch actions (Space / ←→ / ⌫ / copy) then apply to the
+///   whole selection.
 ///
 /// All of the above only ever fire while this table view itself is first
 /// responder, i.e. in Row Focus. Once Inline Edit starts, first responder
@@ -28,8 +28,6 @@ final class RecordTableView: NSTableView {
     var onToggleResolve: ((IndexSet) -> Void)?
     /// Called with the focused row when Enter is pressed on a single selection.
     var onRequestBeginInlineEdit: ((Int) -> Void)?
-    /// Called with the selected Record rows when `M` is pressed (PRD §8.7).
-    var onRequestMoveMenu: ((IndexSet) -> Void)?
     /// Group headers are not navigable; ↑↓ skip them. Nil means every row is.
     var isNavigableRow: ((Int) -> Bool)?
     /// Right-click: Record rows get Move to; Project group headers get
@@ -170,21 +168,12 @@ final class RecordTableView: NSTableView {
         }
     }
 
-    /// Non-special keys: Space and the Move-menu letter. ⌘-combos normally
-    /// never reach keyDown (performKeyEquivalent runs first), but a ⌘M with
-    /// no menu item would — keep it out of the Move menu explicitly.
+    /// Non-special keys: Space. Move has no key (right-click / drag only).
     private func keyDownCharacter(_ event: NSEvent) {
-        let command = event.modifierFlags.contains(.command)
         switch event.charactersIgnoringModifiers?.lowercased() {
         case " "?:
             if !selectedNavigableRows.isEmpty, let onToggleResolve {
                 onToggleResolve(selectedNavigableRows)
-            } else {
-                super.keyDown(with: event)
-            }
-        case "m"? where !command:
-            if !selectedNavigableRows.isEmpty, let onRequestMoveMenu {
-                onRequestMoveMenu(selectedNavigableRows)
             } else {
                 super.keyDown(with: event)
             }
@@ -291,9 +280,22 @@ final class RecordTableView: NSTableView {
     }
 }
 
+/// The list's scroller stays an overlay whatever the system prefers.
+/// AppKit re-applies `NSScroller.preferredScrollerStyle` (legacy when a
+/// mouse is attached or "Show scroll bars: Always") after the one-time
+/// `.overlay` assignment; a legacy bar paints an opaque track over the
+/// transparent surface and narrows the table under the overlay bars, which
+/// is what shifted the selection block left.
+final class OverlayScrollView: NSScrollView {
+    override var scrollerStyle: NSScroller.Style {
+        get { .overlay }
+        set { super.scrollerStyle = .overlay }
+    }
+}
+
 /// Row chrome that does not paint an opaque fill, so the window's
-/// sidebar material shows through between records. Selection still uses
-/// the stock highlight.
+/// sidebar material shows through between records. Selection is a quiet
+/// ink block rather than the accent fill (ui.md §6).
 final class ClearTableRowView: NSTableRowView {
     static let identifier = NSUserInterfaceItemIdentifier("ClearTableRow")
 
@@ -311,6 +313,28 @@ final class ClearTableRowView: NSTableRowView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func drawBackground(in dirtyRect: NSRect) {}
+
+    /// The row frame includes the intercell gap, so the block stops half a
+    /// gap short of its neighbours instead of touching them.
+    /// The block's edges are the Input capsule's edges — `contentInset` in
+    /// from the window on both sides, measured in window coordinates so a
+    /// scroller (or any other table-width change) never shifts it.
+    override func drawSelection(in dirtyRect: NSRect) {
+        let gap = (superview as? NSTableView)?.intercellSpacing.height ?? 0
+        var block = bounds.insetBy(dx: Theme.Size.contentInset, dy: gap / 2)
+        if let host = window?.contentView {
+            let left = convert(NSPoint(x: Theme.Size.contentInset, y: 0), from: host).x
+            let right = convert(NSPoint(x: host.bounds.width - Theme.Size.contentInset, y: 0), from: host).x
+            block.origin.x = left
+            block.size.width = right - left
+        }
+        Theme.Ink.selection.setFill()
+        NSBezierPath(roundedRect: block, xRadius: Theme.Radius.row, yRadius: Theme.Radius.row).fill()
+    }
+
+    /// Labels keep their own ink on the block; AppKit would otherwise flip
+    /// them to white over an emphasized selection.
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 
     /// AppKit insets the cell inside the row even with `.fullWidth`. Pin
     /// cells to the table's full width so the 16pt rail matches All — but

@@ -7,9 +7,11 @@ final class TrashViewController: NSViewController {
 
     private let store: RecordStore
     private let tableView = RecordTableView()
-    private let scrollView = NSScrollView()
+    private let scrollView = OverlayScrollView()
     private let restoreButton = ScopeChipButton(title: "Restore")
     private let deletePermanentlyButton = ScopeChipButton(title: "Delete Permanently")
+    private let hintBar = HintBarView()
+    private lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: Theme.Size.utilityBarHeight)
 
     private var records: [Record] = []
     private var projects: [Project] = []
@@ -48,6 +50,16 @@ final class TrashViewController: NSViewController {
         setUpTable()
         setUpLayout()
         updateActionButtons()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        listDissolve.update()
+        // Hints give way to the action chips when the bar is short of room.
+        let needed = Theme.Size.contentInset + restoreButton.fittingSize.width + Theme.Size.chipSpacing
+            + deletePermanentlyButton.fittingSize.width + Theme.Spacing.xl + hintBar.fittingSize.width
+            + Theme.Size.contentInset
+        hintBar.isHidden = needed > view.bounds.width
     }
 
     func reload(projects: [Project]) {
@@ -124,6 +136,11 @@ final class TrashViewController: NSViewController {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.automaticallyAdjustsContentInsets = false
+        // Header and action bars overlay the list's ends, as on the main
+        // surface.
+        let barInsets = NSEdgeInsets(top: Theme.Size.scopeBarHeight, left: 0, bottom: Theme.Size.utilityBarHeight, right: 0)
+        scrollView.contentInsets = barInsets
+        scrollView.scrollerInsets = barInsets
         scrollView.drawsBackground = false
         scrollView.contentView.drawsBackground = false
         scrollView.contentView.backgroundColor = .clear
@@ -149,57 +166,48 @@ final class TrashViewController: NSViewController {
         deletePermanentlyButton.onClick = { [weak self] in self?.deleteSelectedPermanently() }
         deletePermanentlyButton.translatesAutoresizingMaskIntoConstraints = false
 
+        hintBar.show([("↵", "Restore"), ("⌫", "Delete"), ("esc", "Back")])
+        hintBar.translatesAutoresizingMaskIntoConstraints = false
+
         let actionBar = NSView()
         actionBar.translatesAutoresizingMaskIntoConstraints = false
         actionBar.addSubview(restoreButton)
         actionBar.addSubview(deletePermanentlyButton)
+        actionBar.addSubview(hintBar)
 
-        let topSeparator = NSBox()
-        topSeparator.boxType = .separator
-        topSeparator.translatesAutoresizingMaskIntoConstraints = false
-
-        let bottomSeparator = NSBox()
-        bottomSeparator.boxType = .separator
-        bottomSeparator.translatesAutoresizingMaskIntoConstraints = false
-
-        view.addSubview(headerBar)
-        view.addSubview(topSeparator)
+        // List first, bars on top: both are transparent overlays over the
+        // list's ends (ui.md §4).
         view.addSubview(scrollView)
-        view.addSubview(bottomSeparator)
+        view.addSubview(headerBar)
         view.addSubview(actionBar)
 
         NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
             headerBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             headerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             headerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            headerBar.heightAnchor.constraint(equalToConstant: 36),
+            headerBar.heightAnchor.constraint(equalToConstant: Theme.Size.scopeBarHeight),
 
-            backButton.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: 12),
+            backButton.leadingAnchor.constraint(equalTo: headerBar.leadingAnchor, constant: Theme.Spacing.xl),
             backButton.centerYAnchor.constraint(equalTo: headerBar.centerYAnchor),
 
-            topSeparator.topAnchor.constraint(equalTo: headerBar.bottomAnchor),
-            topSeparator.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            topSeparator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            scrollView.topAnchor.constraint(equalTo: topSeparator.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomSeparator.topAnchor),
-
-            bottomSeparator.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomSeparator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            actionBar.topAnchor.constraint(equalTo: bottomSeparator.bottomAnchor),
             actionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             actionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            actionBar.heightAnchor.constraint(equalToConstant: 36),
+            actionBar.heightAnchor.constraint(equalToConstant: Theme.Size.utilityBarHeight),
 
-            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: LayoutChrome.contentInset),
+            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: Theme.Size.contentInset),
             restoreButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor),
 
-            deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: LayoutChrome.chipSpacing),
-            deletePermanentlyButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor)
+            deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: Theme.Size.chipSpacing),
+            deletePermanentlyButton.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor),
+
+            hintBar.trailingAnchor.constraint(equalTo: actionBar.trailingAnchor, constant: -Theme.Size.contentInset),
+            hintBar.centerYAnchor.constraint(equalTo: actionBar.centerYAnchor)
         ])
     }
 
@@ -385,6 +393,8 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     var smokeAllowsMultipleSelection: Bool { tableView.allowsMultipleSelection }
+    var smokeScrollInsets: NSEdgeInsets { scrollView.contentInsets }
+    var smokeHintTexts: [String] { hintBar.isHidden ? [] : hintBar.hintTexts }
     var smokeActionChips: [ScopeChipButton] { [restoreButton, deletePermanentlyButton] }
     var smokeTableIsFirstResponder: Bool { view.window?.firstResponder === tableView }
 }
