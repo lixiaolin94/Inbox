@@ -40,10 +40,14 @@ enum UISmokeRunner {
             controller.focusInputAtEnd()
             try stepWindowGeometry(window: window, controller: controller)
             try stepChromeGeometry(window: window, controller: controller)
+            try stepPixelAlignment(window: window, controller: controller)
             try stepScopeBarOverflow()
             try stepA(window: window, controller: controller)
             try stepB(window: window, controller: controller, store: store)
             try stepC(window: window, controller: controller, store: store)
+            try stepUtilityBar(window: window, controller: controller)
+            try stepConflicts(window: window, controller: controller, store: store)
+            try stepTrashSurface(window: window, controller: controller)
             let pair = try stepD(window: window, controller: controller)
             try stepE(window: window, controller: controller, store: store, betaID: pair.betaID)
             try stepF(window: window, controller: controller, store: store, betaID: pair.betaID, alphaID: pair.alphaID)
@@ -52,6 +56,9 @@ enum UISmokeRunner {
             try stepMultilineRowHeight(window: window, controller: controller)
             try stepWindowReopen(window: window, controller: controller)
             try stepSettings(window: window)
+            if let directory = LaunchConfiguration.parse(CommandLine.arguments).snapshotDirectory {
+                try stepSnapshots(window: window, controller: controller, store: store, directory: directory)
+            }
             writeLine("UI-SMOKE PASS")
             exit(0)
         } catch {
@@ -80,6 +87,10 @@ enum UISmokeRunner {
         try assertEqual(effect.blendingMode, NSVisualEffectView.BlendingMode.behindWindow, "blur samples behind the window")
         if !window.styleMask.contains(.fullSizeContentView) {
             throw SmokeFailure("fullSizeContentView is required so the titlebar shows the window material")
+        }
+        let fills = TitlebarBackdrop.visibleSystemFills(in: window)
+        if !fills.isEmpty {
+            throw SmokeFailure("titlebar still paints a system material over the sidebar blur: \(fills)")
         }
         try assertEqual(
             controller.smokeOfflineNoticeVisible,
@@ -283,6 +294,255 @@ enum UISmokeRunner {
         }
     }
 
+    /// Every chrome frame (Input, Scope Bar, list, utility bar, every chip)
+    /// sits on device pixels at the window's backing scale — a half-pixel
+    /// edge blurs a 1 pt stroke — and every chip is `chipHeight` tall with
+    /// an integral width.
+    private static func stepPixelAlignment(window: NSWindow, controller: MainViewController) throws {
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        let chips = controller.smokeChipFramesInWindow
+        if chips.count < 5 {
+            throw SmokeFailure("expected All, +, Resolved, Sort and Trash chips, got \(chips.map(\.label))")
+        }
+        for (label, frame) in controller.smokeChromeFramesInWindow + chips {
+            let aligned = window.backingAlignedRect(frame, options: .alignAllEdgesNearest)
+            if abs(aligned.minX - frame.minX) > 0.01 || abs(aligned.maxX - frame.maxX) > 0.01
+                || abs(aligned.minY - frame.minY) > 0.01 || abs(aligned.maxY - frame.maxY) > 0.01 {
+                throw SmokeFailure("\(label) is off the pixel grid at \(window.backingScaleFactor)x: \(frame)")
+            }
+        }
+        for (label, frame) in chips {
+            try assertClose(frame.height, LayoutChrome.chipHeight, "\(label) height", tolerance: 0.01)
+            if abs(frame.width - frame.width.rounded()) > 0.01 {
+                throw SmokeFailure("\(label) width should be integral, got \(frame.width)")
+            }
+        }
+    }
+
+    /// Bottom bar: the three chips are `ScopeChipButton`s on the chip rails
+    /// (the custom chip is kept here on purpose — see MainViewController),
+    /// Resolved toggles state without moving first responder, the sort
+    /// chip's face and menu stay in sync and a pick re-orders the list.
+    private static func stepUtilityBar(window: NSWindow, controller: MainViewController) throws {
+        let resolved = controller.smokeResolvedChip
+        let sort = controller.smokeSortChip
+        let trash = controller.smokeTrashChip
+
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        let bar = controller.smokeUtilityBarFrame
+        for (chip, label) in [(resolved, "resolved"), (sort, "sort"), (trash, "trash")] {
+            if !chip.refusesFirstResponder {
+                throw SmokeFailure("\(label) chip must refuse first responder")
+            }
+            let frame = controller.smokeUtilityControlFrame(chip)
+            try assertClose(frame.height, LayoutChrome.chipHeight, "\(label) chip height")
+            try assertClose(frame.midY, bar.midY, "\(label) chip centred in the utility bar")
+        }
+        let resolvedFrame = controller.smokeUtilityControlFrame(resolved)
+        try assertClose(resolvedFrame.minX, LayoutChrome.contentInset, "resolved chip leading on the chip rail")
+        try assertClose(
+            controller.smokeUtilityControlFrame(sort).minX,
+            resolvedFrame.maxX + LayoutChrome.chipSpacing,
+            "sort chip follows resolved at chipSpacing"
+        )
+        try assertClose(
+            bar.width - controller.smokeUtilityControlFrame(trash).maxX,
+            LayoutChrome.contentInset,
+            "trash chip trailing on the chip rail"
+        )
+
+        // Resolved: symbol and tooltip mirror the preference; toggling never
+        // moves first responder away from Universal Input.
+        controller.focusInputAtEnd()
+        try waitUntil(showing: "input focused before toggling Resolved") { controller.smokeIsInputFirstResponder() }
+        try assertEqual(resolved.symbolName, "eye.slash", "resolved chip starts off")
+        try assertEqual(Preferences.showResolved, false, "Show Resolved starts off")
+        try assertEqual(resolved.toolTip, "Show Resolved", "resolved tooltip when off")
+        let widthOff = controller.smokeUtilityControlFrame(resolved).width
+        controller.smokeClickResolved()
+        pump()
+        controller.view.layoutSubtreeIfNeeded()
+        try assertEqual(resolved.symbolName, "eye", "resolved chip on after click")
+        try assertEqual(Preferences.showResolved, true, "Preferences.showResolved follows the chip")
+        try assertEqual(resolved.toolTip, "Hide Resolved", "resolved tooltip when on")
+        try assertClose(controller.smokeUtilityControlFrame(resolved).width, widthOff, "resolved chip width is stable across the symbol swap")
+        if !controller.smokeIsInputFirstResponder() {
+            throw SmokeFailure("toggling Resolved must not steal first responder from Universal Input")
+        }
+        controller.smokeClickResolved()
+        pump()
+        try assertEqual(resolved.symbolName, "eye.slash", "resolved chip off after second click")
+        try assertEqual(Preferences.showResolved, false, "Preferences.showResolved restored")
+
+        // Sort: face shows the short title, menu keeps the long ones with a
+        // checkmark on the current sort, and a pick re-orders the list.
+        try assertEqual(sort.chipTitle, Preferences.sortOrder.chipTitle, "sort chip shows the current sort")
+        try assertEqual(controller.smokeSortMenuTitles, RecordSort.allCases.map(\.menuTitle), "sort menu lists every RecordSort")
+        try assertEqual(controller.smokeCheckedSortMenuTitle, RecordSort.newestFirst.menuTitle, "checkmark on the current sort")
+        let newestFirst = controller.smokeVisibleRecords.map(\.id)
+        try assertEqual(newestFirst.count, 2, "two records before the sort check")
+        controller.smokeSelectSort(.oldestFirst)
+        try waitUntil(showing: "list re-ordered oldest first") {
+            controller.smokeVisibleRecords.map(\.id) == Array(newestFirst.reversed())
+        }
+        try assertEqual(sort.chipTitle, RecordSort.oldestFirst.chipTitle, "sort chip updates on change")
+        try assertEqual(Preferences.sortOrder, .oldestFirst, "Preferences.sortOrder follows the menu pick")
+        try assertEqual(controller.smokeCheckedSortMenuTitle, RecordSort.oldestFirst.menuTitle, "checkmark moves with the sort")
+        controller.smokeSelectSort(.newestFirst)
+        try waitUntil(showing: "list restored newest first") {
+            controller.smokeVisibleRecords.map(\.id) == newestFirst
+        }
+        try assertEqual(sort.chipTitle, RecordSort.newestFirst.chipTitle, "sort chip restored")
+        try assertEqual(Preferences.sortOrder, .newestFirst, "Preferences.sortOrder restored")
+
+        // Trash action bar (hidden surface; no display needed for these).
+        let actions = controller.smokeTrashActionChips
+        try assertEqual(actions.map(\.chipTitle), ["Restore", "Delete Permanently"], "trash action chips")
+        for chip in actions where !chip.refusesFirstResponder {
+            throw SmokeFailure("\(chip.chipTitle) must refuse first responder")
+        }
+    }
+
+    /// Conflict centre (PRD §15.3): a pair manufactured straight in the DB
+    /// badges both rows and raises the utility-bar chip; the chip narrows
+    /// the list to the pair without moving first responder; Keep This from
+    /// the duplicate's context menu trashes the original and settles the
+    /// pair. Leaves the list as it found it (alpha, beta; Trash empty) by
+    /// restoring the original and resolving both probe records away.
+    private static func stepConflicts(window: NSWindow, controller: MainViewController, store: RecordStore) throws {
+        let chip = controller.smokeConflictsChip
+        try assertEqual(chip.isHidden, true, "conflicts chip hidden while there are no conflicts")
+        if !chip.refusesFirstResponder {
+            throw SmokeFailure("conflicts chip must refuse first responder")
+        }
+        let before = controller.smokeVisibleRecords.map(\.id)
+        guard let plainID = before.first else {
+            throw SmokeFailure("expected a record outside the pair before the conflict step")
+        }
+        let original = try createRecordSync(store: store, content: "smoke conflict original")
+        let duplicate = try createRecordSync(store: store, content: "smoke conflict duplicate")
+        try applySync("duplicate marked as a conflict copy") {
+            store.smokeMarkAsConflictDuplicate(id: duplicate.id, of: original.id, completion: $0)
+        }
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "conflicts chip shows the pair") {
+            controller.smokeVisibleRecords.count == before.count + 2 && !chip.isHidden && chip.chipTitle == "1 conflict"
+        }
+        controller.view.layoutSubtreeIfNeeded()
+        let chipFrame = controller.smokeUtilityControlFrame(chip)
+        try assertClose(
+            chipFrame.minX,
+            controller.smokeUtilityControlFrame(controller.smokeSortChip).maxX + LayoutChrome.chipSpacing,
+            "conflicts chip follows sort at chipSpacing"
+        )
+        try assertClose(chipFrame.midY, controller.smokeUtilityBarFrame.midY, "conflicts chip centred in the utility bar")
+        try assertEqual(chip.symbolName, "exclamationmark.triangle", "conflicts chip symbol")
+        for record in [original, duplicate] where !controller.smokeIsConflictBadgeShown(forRecordID: record.id) {
+            throw SmokeFailure("'\(record.content)' should carry the Conflict badge")
+        }
+        if controller.smokeIsConflictBadgeShown(forRecordID: plainID) {
+            throw SmokeFailure("a record outside the pair must not carry the Conflict badge")
+        }
+        try assertEqual(
+            controller.smokeRowHeight(forRecordID: duplicate.id),
+            controller.smokeRowHeight(forRecordID: plainID),
+            "badge does not change the row height"
+        )
+        if let directory = LaunchConfiguration.parse(CommandLine.arguments).snapshotDirectory {
+            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            window.appearance = NSAppearance(named: .aqua)
+            try renderSnapshot("main-conflict-aqua-720", window: window, controller: controller, directory: directory)
+            window.appearance = nil
+            pump()
+        }
+
+        // Filter to the pair and back; Universal Input keeps first responder.
+        controller.focusInputAtEnd()
+        try waitUntil(showing: "input focused before filtering conflicts") { controller.smokeIsInputFirstResponder() }
+        controller.smokeClickConflictsChip()
+        try waitUntil(showing: "conflicts chip filters the list to the pair") {
+            chip.isSelectedScope && Set(controller.smokeVisibleRecords.map(\.id)) == [original.id, duplicate.id]
+        }
+        if !controller.smokeIsInputFirstResponder() {
+            throw SmokeFailure("filtering conflicts must not steal first responder from Universal Input")
+        }
+        controller.smokeClickConflictsChip()
+        try waitUntil(showing: "second click restores the full list") {
+            !chip.isSelectedScope && controller.smokeVisibleRecords.count == before.count + 2
+        }
+        if !controller.smokeIsInputFirstResponder() {
+            throw SmokeFailure("clearing the conflicts filter must not steal first responder from Universal Input")
+        }
+
+        // Resolve from the duplicate's context menu: Keep This trashes the
+        // original, clears the marker, and leaves Row Focus on the survivor.
+        try assertEqual(
+            Array(controller.smokeContextMenuTitles(forRecordID: duplicate.id)?.prefix(2) ?? []),
+            ["Resolve Conflict", "Move to"],
+            "Resolve Conflict sits above Move to on a conflicted row"
+        )
+        try assertEqual(
+            controller.smokeResolveConflictMenuTitles(forRecordID: duplicate.id),
+            ["Keep This", "Keep Other", "Keep Both"],
+            "resolution choices"
+        )
+        if !controller.smokeResolveConflict(id: duplicate.id, resolution: .keepThis) {
+            throw SmokeFailure("Keep This menu item missing on the duplicate")
+        }
+        try waitUntil(showing: "Keep This trashed the original and settled the pair") {
+            chip.isHidden
+                && !controller.smokeVisibleRecords.contains { $0.id == original.id }
+                && controller.smokeVisibleRecords.contains { $0.id == duplicate.id }
+                && !controller.smokeIsConflictBadgeShown(forRecordID: duplicate.id)
+        }
+        try assertEqual(try trashedSync(store: store).map(\.id), [original.id], "original in Trash after Keep This")
+        guard let settled = try store.recordByID(duplicate.id) else {
+            throw SmokeFailure("DB missing the duplicate after Keep This")
+        }
+        try assertEqual(settled.conflictOf, nil, "duplicate marker cleared")
+        try assertEqual(controller.smokeContextMenuTitles(forRecordID: duplicate.id)?.first, "Move to", "no Resolve Conflict item once settled")
+        try waitUntil(showing: "Row Focus on the surviving row") {
+            controller.smokeIsTableFirstResponder() && controller.smokeSelectedRecord?.id == duplicate.id
+        }
+
+        try applySync("original restored from Trash") { done in
+            store.restoreFromTrash(id: original.id) { done($0.map { _ in () }) }
+        }
+        for record in [original, duplicate] {
+            try applySync("'\(record.content)' resolved out of the list") {
+                store.setStatus(id: record.id, status: .resolved, completion: $0)
+            }
+        }
+        controller.focusInputAtEnd()
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "list back to the records before the conflict step") {
+            controller.smokeVisibleRecords.map(\.id) == before && chip.isHidden
+        }
+        try assertEqual(try trashedSync(store: store).count, 0, "Trash empty after the conflict step")
+        try waitUntil(showing: "Universal Input focused after the conflict step") {
+            controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+        }
+    }
+
+    /// Trash chip opens the secondary surface with its table focused; Esc
+    /// (NSTableView → cancelOperation up the responder chain to
+    /// TrashViewController) returns to the main surface with Universal
+    /// Input focused. Guards the Esc path after the dead
+    /// `onRequestEscape` closure was removed.
+    private static func stepTrashSurface(window: NSWindow, controller: MainViewController) throws {
+        try assertEqual(controller.smokeIsShowingTrash, false, "main surface showing before opening Trash")
+        controller.smokeOpenTrash()
+        try waitUntil(showing: "Trash surface visible") { controller.smokeIsShowingTrash }
+        try waitUntil(showing: "Trash table is first responder") { controller.smokeTrashTableIsFirstResponder }
+        try sendSpecial(keyCode: KeyCode.escape, characters: "\u{1b}", window: window)
+        try waitUntil(showing: "Esc returned to the main surface") { !controller.smokeIsShowingTrash }
+        try waitUntil(showing: "Universal Input focused after leaving Trash") {
+            controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+        }
+    }
+
     /// ⌘, opens the Settings window; close it so later steps keep the main window.
     private static func stepSettings(window: NSWindow) throws {
         guard let appDelegate = NSApp.delegate as? AppDelegate else {
@@ -323,6 +583,27 @@ enum UISmokeRunner {
         )
         try waitUntil(showing: "Universal Input is first responder after reopen") {
             controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+        }
+
+        // Warm activation (PRD §17.1): the app's own share of "window
+        // hidden → visible with the caret in Input". The Dock / ⌘Tab /
+        // launcher hop before `presentMainWindow` is the system's.
+        var samples: [Double] = []
+        for _ in 0..<5 {
+            window.performClose(nil)
+            try waitUntil(showing: "window hidden before warm-activation sample") { !window.isVisible }
+            let start = DispatchTime.now().uptimeNanoseconds
+            appDelegate.presentMainWindow()
+            window.displayIfNeeded()
+            try waitUntil(showing: "warm-activation sample visible") {
+                window.isVisible && controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+            }
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+        }
+        samples.sort()
+        writeLine(String(format: "PERF warm-activation ms: min %.1f median %.1f max %.1f", samples[0], samples[2], samples[4]))
+        if samples[2] > 100 {
+            throw SmokeFailure("warm activation median \(samples[2]) ms exceeds the 100 ms budget")
         }
     }
 
@@ -420,7 +701,7 @@ enum UISmokeRunner {
         }
         try assertEqual(selected.id, betaID, "↓ should select the first (newest) record, smoke beta")
 
-        try sendSpecial(keyCode: KeyCode.leftArrow, window: window)
+        try sendArrow(.leftArrow, keyCode: KeyCode.leftArrow, window: window)
         try waitUntil(showing: "selected record priority is P1") {
             controller.smokeSelectedRecord?.priority == Priority.p1.rawValue
         }
@@ -619,6 +900,193 @@ enum UISmokeRunner {
         }
     }
 
+    // MARK: - Snapshots (--snapshot-dir)
+
+    /// Renders the real window content to `<dir>/<surface>-<state>-<appearance>-<width>.png`
+    /// for light/dark × 480/720/1100 pt × main / Show Resolved / Trash, plus
+    /// Row Focus and Inline Edit at 720 pt light, so a reviewer who cannot
+    /// look at the screen can look at PNGs. `manifest.txt` lists each file
+    /// with its pixel size. Runs last and puts everything back (appearance,
+    /// frame, Show Resolved, main surface, Input focused).
+    ///
+    /// `cacheDisplay` covers `contentView` only: the titlebar (traffic
+    /// lights) is a sibling view and never appears, and the `behindWindow`
+    /// blur is composited by the window server, so the sidebar material
+    /// renders without whatever sits behind the window.
+    private static func stepSnapshots(
+        window: NSWindow,
+        controller: MainViewController,
+        store: RecordStore,
+        directory: String
+    ) throws {
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let longID = try seedSnapshotData(controller: controller, store: store)
+        let originalFrame = window.frame
+
+        func render(_ name: String) throws {
+            try renderSnapshot(name, window: window, controller: controller, directory: directory, wrapRecordID: longID)
+        }
+
+        func eachVariant(_ body: (String) throws -> Void) throws {
+            for (appearance, label) in [(NSAppearance.Name.aqua, "aqua"), (.darkAqua, "darkAqua")] {
+                window.appearance = NSAppearance(named: appearance)
+                for width: CGFloat in [480, 720, 1100] {
+                    setSnapshotFrame(window: window, width: width)
+                    try body("\(label)-\(Int(width))")
+                }
+            }
+        }
+
+        // With Project chips on the bar and at every width, not just launch.
+        try eachVariant {
+            try stepPixelAlignment(window: window, controller: controller)
+            try render("main-default-\($0)")
+        }
+
+        let openCount = controller.smokeVisibleRecords.count
+        controller.smokeClickResolved()
+        try waitUntil(showing: "resolved records visible for snapshots") {
+            controller.smokeVisibleRecords.count > openCount
+        }
+        try eachVariant { try render("main-resolved-\($0)") }
+        controller.smokeClickResolved()
+        try waitUntil(showing: "resolved records hidden again") {
+            controller.smokeVisibleRecords.count == openCount
+        }
+
+        controller.smokeOpenTrash()
+        try waitUntil(showing: "Trash surface listing the trashed records") {
+            controller.smokeIsShowingTrash && controller.smokeTrashTableIsFirstResponder
+                && ((window.firstResponder as? NSTableView)?.numberOfRows ?? 0) >= 2
+        }
+        try eachVariant { try render("trash-default-\($0)") }
+        try sendSpecial(keyCode: KeyCode.escape, characters: "\u{1b}", window: window)
+        try waitUntil(showing: "main surface back after the Trash snapshots") {
+            !controller.smokeIsShowingTrash && controller.smokeIsInputFirstResponder()
+        }
+
+        window.appearance = NSAppearance(named: .aqua)
+        setSnapshotFrame(window: window, width: 720)
+        // Leaving Trash re-runs the search asynchronously; ↓ must not race
+        // an empty list.
+        try waitUntil(showing: "list reloaded after leaving Trash") { !controller.smokeVisibleRecords.isEmpty }
+        controller.focusInputAtEnd()
+        try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+        try waitUntil(showing: "first record selected for the Row Focus snapshot") {
+            controller.smokeIsTableFirstResponder() && controller.smokeSelectedRecord != nil
+        }
+        try render("main-rowfocus-aqua-720")
+        // Creation timestamps can tie at millisecond resolution, so the
+        // wrapped record is not guaranteed to be the first row: walk to it.
+        var hops = 0
+        while controller.smokeSelectedRecord?.id != longID, hops < 12 {
+            try sendArrow(.downArrow, keyCode: KeyCode.downArrow, window: window)
+            hops += 1
+        }
+        try assertEqual(controller.smokeSelectedRecord?.id, longID, "↓ reaches the wrapped record")
+        try sendReturn(window: window)
+        try waitUntil(showing: "Inline Edit on the wrapped record") { controller.smokeIsEditingRecord(id: longID) }
+        try render("main-inlineedit-aqua-720")
+        try sendSpecial(keyCode: KeyCode.escape, characters: "\u{1b}", window: window)
+        try waitUntil(showing: "Inline Edit ended after the snapshot") { !controller.smokeIsEditingRecord(id: longID) }
+
+        let manifestPath = (directory as NSString).appendingPathComponent("manifest.txt")
+        try (snapshotManifest.joined(separator: "\n") + "\n").write(toFile: manifestPath, atomically: true, encoding: .utf8)
+
+        window.appearance = nil
+        window.setFrame(originalFrame, display: true)
+        window.layoutIfNeeded()
+        pump()
+        try assertContentSize(of: window, equals: MainWindowGeometry.defaultContentSize, "content size after snapshots")
+        try assertEqual(Preferences.showResolved, false, "Show Resolved off after snapshots")
+        try assertEqual(controller.smokeIsShowingTrash, false, "main surface after snapshots")
+        controller.focusInputAtEnd()
+        try waitUntil(showing: "Universal Input focused after snapshots") {
+            controller.smokeIsInputFirstResponder() && window.firstResponder is NSTextView
+        }
+    }
+
+    /// Every PNG rendered this run, `name.png WxH`, written out by `stepSnapshots`.
+    private static var snapshotManifest: [String] = []
+
+    /// Renders the window's content view to `<directory>/<name>.png`.
+    /// `wrapRecordID` also logs that row's wrap metrics for the pixel review.
+    private static func renderSnapshot(
+        _ name: String,
+        window: NSWindow,
+        controller: MainViewController,
+        directory: String,
+        wrapRecordID: String? = nil
+    ) throws {
+        window.layoutIfNeeded()
+        controller.view.layoutSubtreeIfNeeded()
+        pump()
+        pump()
+        if let wrapRecordID {
+            writeLine("WRAP \(name): \(controller.smokeWrapMetrics(forRecordID: wrapRecordID) ?? "-")")
+        }
+        guard let content = window.contentView,
+              let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
+            throw SmokeFailure("\(name): no bitmap for the content view")
+        }
+        content.cacheDisplay(in: content.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else {
+            throw SmokeFailure("\(name): PNG encoding failed")
+        }
+        let path = (directory as NSString).appendingPathComponent("\(name).png")
+        try png.write(to: URL(fileURLWithPath: path))
+        snapshotManifest.append("\(name).png \(rep.pixelsWide)x\(rep.pixelsHigh)")
+        writeLine("SNAPSHOT \(path) \(rep.pixelsWide)x\(rep.pixelsHigh)")
+    }
+
+    /// Centres a `width` × 480 frame on the screen so 1100 pt stays visible.
+    private static func setSnapshotFrame(window: NSWindow, width: CGFloat) {
+        let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
+        var frame = window.frame
+        frame.size = NSSize(width: width, height: 480)
+        frame.origin = NSPoint(x: screen.midX - width / 2, y: screen.midY - frame.height / 2)
+        window.setFrame(window.constrainFrameRect(frame, to: window.screen), display: true)
+        window.layoutIfNeeded()
+        pump()
+    }
+
+    /// Fills the smoke DB so every surface has something to show: Inbox
+    /// plus two Projects, one Record long enough to wrap to 3+ lines at
+    /// 720 pt, a P0 Record, the resolved Records the earlier steps left
+    /// behind, and a second trashed Record. Returns the wrapped Record's id.
+    private static func seedSnapshotData(controller: MainViewController, store: RecordStore) throws -> String {
+        func createProject(_ name: String) throws -> Project {
+            var result: Result<Project, Error>?
+            store.projects.createProject(name: name) { result = $0 }
+            try waitUntil(showing: "project '\(name)' created") { result != nil }
+            return try result!.get()
+        }
+        let openBefore = controller.smokeVisibleRecords.count
+        let design = try createProject("Design")
+        let ops = try createProject("Ops")
+        _ = try createRecordSync(store: store, content: "Review the onboarding mockups with Mei", projectID: design.id)
+        _ = try createRecordSync(store: store, content: "Export the icon set at 1x and 2x", projectID: design.id)
+        let keys = try createRecordSync(store: store, content: "Rotate the CloudKit production keys", projectID: ops.id)
+        _ = try createRecordSync(store: store, content: "Back up the SQLite snapshot before the migration", projectID: ops.id)
+        _ = try createRecordSync(store: store, content: "Renew the domain before Friday")
+        let long = try createRecordSync(store: store, content: snapshotLongContent)
+        let discarded = try createRecordSync(store: store, content: "Old draft to discard")
+        try applySync("P0 priority set") { store.updatePriority(id: keys.id, priority: Priority.p0.rawValue, completion: $0) }
+        try applySync("second record trashed") { store.moveToTrash(id: discarded.id, completion: $0) }
+
+        controller.reloadProjectsAndSearch()
+        try waitUntil(showing: "snapshot projects and records visible") {
+            controller.smokeVisibleRecords.count == openBefore + 6
+        }
+        return long.id
+    }
+
+    /// ~220 characters of mixed Chinese and English: wraps to 3+ lines at 720 pt.
+    private static let snapshotLongContent =
+        "把同步冲突处理方案再过一遍：schema v4 加 conflict_of 字段并随 CloudKit 同步，列表里的冲突行在时间列位置显示弱化的 Conflict 标签，"
+        + "Utility 栏出现 N conflicts chip，右键菜单提供 Keep This / Keep Other / Keep Both 三个动作；Keep This 把对方移入 Trash，可恢复且无损，"
+        + "Keep Both 只清空标记，不新增任何 surface。Review with the team on Thursday and write the numbers into HISTORY."
+
     // MARK: - Event synthesis
 
     private static func typeText(_ text: String, window: NSWindow, controller: MainViewController) throws {
@@ -781,6 +1249,20 @@ enum UISmokeRunner {
         }
         try waitUntil(showing: "store search completed") { result != nil }
         return try result!.get()
+    }
+
+    private static func createRecordSync(store: RecordStore, content: String, projectID: String? = nil) throws -> Record {
+        var result: Result<Record, Error>?
+        store.createRecord(content: content, projectID: projectID) { result = $0 }
+        try waitUntil(showing: "record '\(content.prefix(24))' created") { result != nil }
+        return try result!.get()
+    }
+
+    private static func applySync(_ label: String, _ write: (@escaping (Result<Void, Error>) -> Void) -> Void) throws {
+        var result: Result<Void, Error>?
+        write { result = $0 }
+        try waitUntil(showing: label) { result != nil }
+        try result!.get()
     }
 
     private static func trashedSync(store: RecordStore) throws -> [Record] {

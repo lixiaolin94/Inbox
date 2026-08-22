@@ -182,12 +182,21 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         }
     }
 
-    func configure(with record: Record, style: RecordCellStyle = .regular) {
+    /// `isConflicted`: the row is one half of an unresolved conflict pair
+    /// (PRD §15.3). The weak badge takes the time column's place so row
+    /// height and the trailing rail are unchanged.
+    func configure(with record: Record, style: RecordCellStyle = .regular, isConflicted: Bool = false) {
         applyWrapping(for: style)
         applyMetrics(for: style)
         let fontSize = Preferences.recordFontSize
         let contentFont = NSFont.systemFont(ofSize: fontSize)
         let priority = record.priorityValue
+        // Cells are recycled across styles and conflict states, so every
+        // accessibility override is reset here, not only set.
+        setAccessibilityElement(style == .trash)
+        setAccessibilityLabel(style == .trash ? "Trashed: \(record.content)" : nil)
+        priorityLabel.setAccessibilityLabel("Priority \(priority.label)")
+        timeLabel.setAccessibilityLabel(isConflicted ? "Unresolved sync conflict" : nil)
 
         if style == .trash {
             priorityLabel.stringValue = ""
@@ -197,11 +206,17 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             let timestamp = record.deletedAt ?? record.createdAt
             timeLabel.stringValue = Self.relativeTimeString(fromMillis: timestamp)
             timeLabel.textColor = .secondaryLabelColor
+            // An attributed value carries its own paragraph style, which
+            // overrides the cell's lineBreakMode — without this the Trash
+            // row clipped mid-glyph instead of showing an ellipsis.
+            let truncating = NSMutableParagraphStyle()
+            truncating.lineBreakMode = .byTruncatingTail
             contentField.attributedStringValue = NSAttributedString(
                 string: record.content,
                 attributes: [
                     .font: contentFont,
-                    .foregroundColor: NSColor.labelColor
+                    .foregroundColor: NSColor.labelColor,
+                    .paragraphStyle: truncating
                 ]
             )
             return
@@ -236,7 +251,13 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             priorityLabel.textColor = Self.color(for: priority)
             timeLabel.textColor = .secondaryLabelColor
         }
+        if isConflicted {
+            timeLabel.stringValue = Self.conflictBadgeText
+            timeLabel.textColor = .systemOrange
+        }
     }
+
+    private static let conflictBadgeText = "Conflict"
 
     private func applyMetrics(for style: RecordCellStyle) {
         let fontSize = Preferences.recordFontSize
@@ -269,7 +290,9 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
             contentField.lineBreakMode = .byTruncatingTail
             if let cell = contentField.cell as? NSTextFieldCell {
                 cell.wraps = false
-                cell.isScrollable = true
+                // A scrollable cell clips instead of truncating; the Trash
+                // snapshot showed a half glyph where the ellipsis belongs.
+                cell.isScrollable = false
                 cell.usesSingleLineMode = true
                 cell.lineBreakMode = .byTruncatingTail
             }
@@ -332,7 +355,9 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
         editor.isVerticallyResizable = true
         editor.textContainer?.widthTracksTextView = true
         editor.textContainer?.lineBreakMode = .byWordWrapping
-        editor.textContainer?.lineFragmentPadding = 0
+        // NSTextFieldCell draws its text 2 pt in from the cell edge; the
+        // editor must do the same or the text jumps on Enter (pixel snapshots).
+        editor.textContainer?.lineFragmentPadding = 2
         let width = max(contentField.bounds.width, 1)
         editor.maxSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.size = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
@@ -424,12 +449,27 @@ final class RecordCellView: NSTableCellView, NSTextFieldDelegate {
 
     // MARK: - UI smoke
 
+    /// Wrap diagnostics: field width vs. the width the text was measured at.
+    var smokeWrapMetrics: String {
+        let field = contentField.frame.width
+        let measuredAtField = contentField.cell?.cellSize(forBounds: contentField.bounds).height ?? -1
+        return String(
+            format: "cell %.1fx%.1f field %.1f pref %.1f intrinsicH %.1f cellSizeH@field %.1f",
+            frame.width, frame.height, field, contentField.preferredMaxLayoutWidth,
+            contentField.intrinsicContentSize.height, measuredAtField
+        )
+    }
+
     func smokePriorityMinX(in view: NSView?) -> CGFloat {
         priorityLabel.convert(priorityLabel.bounds, to: view).minX
     }
 
     func smokeTimeMaxX(in view: NSView?) -> CGFloat {
         timeLabel.convert(timeLabel.bounds, to: view).maxX
+    }
+
+    var smokeShowsConflictBadge: Bool {
+        timeLabel.stringValue == Self.conflictBadgeText && !timeLabel.isHidden
     }
 }
 
@@ -538,17 +578,25 @@ private final class WrappingTextFieldCell: NSTextFieldCell {
         }
         // While editing, measure the field editor's live text, not the
         // stale stringValue captured when editing began.
-        var measured = attributedStringValue
-        if let editor = (controlView as? NSTextField)?.currentEditor() {
-            measured = NSAttributedString(string: editor.string, attributes: [.font: font])
-        }
+        let editorText = (controlView as? NSTextField)?.currentEditor()?.string
+        let measured = editorText.map { NSAttributedString(string: $0, attributes: [.font: font]) } ?? attributedStringValue
         let key = MeasureKey(width: width, text: measured, pointSize: font.pointSize)
         if key == cachedKey { return cachedSize }
-        let bounds = measured.boundingRect(
-            with: NSSize(width: width, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
-        let size = NSSize(width: width, height: max(ceil(bounds.height), lineHeight))
+        let unbounded = NSRect(x: 0, y: 0, width: width, height: CGFloat.greatestFiniteMagnitude)
+        let height: CGFloat
+        if editorText == nil {
+            // Display mode: let NSTextFieldCell measure with the exact
+            // wrapping it draws with. `boundingRect` broke lines slightly
+            // differently (304 pt: 8 lines measured, 9 drawn — the last
+            // line was clipped in the pixel snapshots).
+            height = super.cellSize(forBounds: unbounded).height
+        } else {
+            height = measured.boundingRect(
+                with: unbounded.size,
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            ).height
+        }
+        let size = NSSize(width: width, height: max(ceil(height), lineHeight))
         cachedKey = key
         cachedSize = size
         return size
@@ -565,7 +613,7 @@ private final class WrappingTextFieldCell: NSTextFieldCell {
         textView.isVerticallyResizable = true
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.lineBreakMode = .byWordWrapping
-        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.lineFragmentPadding = 2
         return editor
     }
 }

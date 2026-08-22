@@ -33,7 +33,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
         PRODUCT_NAME: Inbox
-        MARKETING_VERSION: "0.2.0"
+        MARKETING_VERSION: "0.3.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         INFOPLIST_KEY_CFBundleDisplayName: Inbox
@@ -41,7 +41,16 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
       configs:
+        Debug:
+          # CloudKit container environment and APS environment are read by
+          # the entitlements file per configuration: Debug talks to the
+          # Development container, Release to Production (schema must be
+          # deployed there first — docs/RELEASE.md).
+          ICLOUD_CONTAINER_ENVIRONMENT: Development
+          APS_ENVIRONMENT: development
         Release:
+          ICLOUD_CONTAINER_ENVIRONMENT: Production
+          APS_ENVIRONMENT: production
           # Apple Silicon only: the x86_64 slice doubled the bundle (1.2 MB
           # per arch) for machines this app is never run on.
           ARCHS: arm64
@@ -55,8 +64,8 @@ targets:
       properties:
         com.apple.developer.icloud-services: [CloudKit]
         com.apple.developer.icloud-container-identifiers: [iCloud.com.xiaolin.Inbox]
-        com.apple.developer.icloud-container-environment: Development
-        com.apple.developer.aps-environment: development
+        com.apple.developer.icloud-container-environment: $(ICLOUD_CONTAINER_ENVIRONMENT)
+        com.apple.developer.aps-environment: $(APS_ENVIRONMENT)
     dependencies:
       - sdk: libsqlite3.tbd
       - sdk: CloudKit.framework
@@ -81,6 +90,7 @@ targets:
           - Model/RecordSort.swift
           - Model/ListRow.swift
           - Model/RowFocus.swift
+          - Model/Export.swift
           - Storage/SQLiteDatabase.swift
           - Storage/RecordStore.swift
           - Storage/RecordStore+Sync.swift

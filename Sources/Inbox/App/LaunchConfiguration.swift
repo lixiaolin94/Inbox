@@ -5,6 +5,8 @@ import Foundation
 /// `--db-path` and `--defaults-suite` are the generic overrides.
 /// `--ui-smoke` reuses them (filling in a temp database and the smoke suite
 /// when they are omitted) so its isolation semantics stay unchanged.
+/// `--snapshot-dir` is read only by the smoke: its last step renders the
+/// window under every appearance × width × surface to PNGs there.
 struct LaunchConfiguration: Equatable {
     static let uiSmokeArgument = "--ui-smoke"
     static let smokeDefaultsSuite = "com.xiaolin.Inbox.smoke"
@@ -20,6 +22,7 @@ struct LaunchConfiguration: Equatable {
     var syncProbe: SyncProbeVerb?
     var probeContent: String?
     var probeTimeout: TimeInterval
+    var snapshotDirectory: String?
 
     static func parse(
         _ arguments: [String],
@@ -31,6 +34,7 @@ struct LaunchConfiguration: Equatable {
         var syncProbe: SyncProbeVerb?
         var probeContent: String?
         var probeTimeout: TimeInterval = 60
+        var snapshotDirectory: String?
 
         var index = 0
         while index < arguments.count {
@@ -57,6 +61,9 @@ struct LaunchConfiguration: Equatable {
                 if index < arguments.count, let value = TimeInterval(arguments[index]) {
                     probeTimeout = value
                 }
+            case "--snapshot-dir":
+                index += 1
+                if index < arguments.count { snapshotDirectory = arguments[index] }
             default:
                 break
             }
@@ -79,7 +86,8 @@ struct LaunchConfiguration: Equatable {
             defaultsSuiteName: defaultsSuiteName,
             syncProbe: syncProbe,
             probeContent: probeContent,
-            probeTimeout: probeTimeout
+            probeTimeout: probeTimeout,
+            snapshotDirectory: snapshotDirectory
         )
     }
 }

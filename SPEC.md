@@ -84,7 +84,7 @@ MVP 的 Slice 队列 S1–S6 已于 2026-08-21 全部合并（v0.2.0），之后
 目标是"平台最佳性能 + 最少自定义"，让系统升级自动带来外观与行为改进。
 
 1. **先找平台组件**：`NSButton` 的 bezelStyle（`.accessoryBarAction`、`.badge`、玻璃样式）、`NSTableView` group rows / `NSOutlineView`、`NSSearchField`、`NSSegmentedControl`、`NSVisualEffectView` / `NSGlassEffectView`、标准 Settings 窗口、`NSMenu`。
-2. **自绘是最后手段**：只有平台控件无法表达 PRD 语义（例如 chip 选中不改宽度、`refusesFirstResponder` 保住 Input 焦点）时才自绘，并在 ARCHITECTURE §8 登记"为什么"。
+2. **自绘是最后手段，但要量**：只有平台控件无法表达 PRD 语义（例如 chip 选中不改宽度、`refusesFirstResponder` 保住 Input 焦点）或实测明显更贵时才自绘，并在 ARCHITECTURE §8 登记"为什么"。替换自绘前先做控件微基准（HISTORY 决策 10）——R7 证明系统 bezel 的首绘/重绘可能比轻量自绘贵一个量级。
 3. **workaround 要标注退出条件**：例如 `TitlebarBackdrop`、`ClearTableRowView` 的居中修正，系统修复后删除。
 4. **替换顺序**：先低风险（Utility/Trash 栏按钮）、后高风险（Scope chip、分组折叠）；每一步跑 `--ui-smoke` 并人工确认键盘语义不变。
 5. **度量**：替换前后各记一次启动/激活时延与二进制体积，不凭感觉。

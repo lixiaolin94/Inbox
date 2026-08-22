@@ -16,6 +16,7 @@ Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation�
 - **Trash**：软删除 + `⌘Z` 撤销；独立 Secondary Surface 提供 Restore 和高成本、明确确认的 Permanent Delete。
 - **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏图标左键 / `⌘Tab` 重新激活时 Universal Input 立即获得焦点，首键不丢失；菜单栏图标右键出菜单；可选 Launch at Login。
 - **Local-first SQLite**：每台设备一份本地 SQLite，所有高频操作先落盘、UI 立即反馈，再异步同步；无网络时功能完整可用。
+- **同步冲突**：同一条 Record 两端同时改了内容时保留双方，并在行上显示弱化的 Conflict 标记，底栏出现 "N conflicts" chip 可把列表过滤到冲突对；右键 Resolve Conflict ▸ Keep This / Keep Other / Keep Both，被放弃的一方进入 Trash，可恢复。
 
 ## 构建与运行
 
@@ -76,6 +77,8 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 数据库位于 `~/Library/Application Support/Inbox/inbox.sqlite`，单文件 SQLite，格式开放、可被任意 SQLite 工具、脚本或 Agent 读取。完整字段说明见 [`docs/SCHEMA.md`](docs/SCHEMA.md)。
 
 外部工具**只读**时请使用只读连接（如 `sqlite3 'file:...?mode=ro'`）或先复制副本，不要在 Inbox 运行期间对活动数据库直接写入——第三方直接写库不是稳定接口，会绕过校验、迁移和未来的同步/冲突逻辑（[PRD §16.2](Inbox_macOS_MVP_PRD_v0.1.md)）。
+
+不想碰活动数据库时用 File 菜单的三个入口：**Export as JSON…**（`⇧⌘E`）把全部 Project 与全部 Record（含 Resolved 与 Trash，不过滤）连同导出元数据写成一个 JSON 文件；**Export Database Snapshot…** 用 `VACUUM INTO` 生成一份独立、一致的 SQLite 副本（不需要一起复制 `-wal`/`-shm`）；**Show Data in Finder** 在 Finder 里定位数据库文件。JSON 的字段就是 SCHEMA 里的列名，格式说明见 [`docs/SCHEMA.md`](docs/SCHEMA.md) 的「导出格式」一节。
 
 ## 性能
 

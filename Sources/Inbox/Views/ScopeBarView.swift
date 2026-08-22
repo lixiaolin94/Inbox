@@ -68,6 +68,7 @@ final class ScopeBarView: NSView {
         addButton.prefersSquare = true
         addButton.symbolName = "plus"
         addButton.toolTip = "New Project"
+        addButton.setAccessibilityLabel("New Project")
         addButton.onClick = { [weak self] in self?.onCreateProject?() }
         addButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(addButton)
@@ -352,6 +353,11 @@ final class ScopeBarView: NSView {
     func smokeAllChipFrame(in view: NSView?) -> NSRect? {
         guard let button = chips.first(where: { $0.scope == .all })?.button else { return nil }
         return button.convert(button.bounds, to: view)
+    }
+
+    /// Every Scope chip (All first), labelled by title.
+    func smokeChipFrames(in view: NSView?) -> [(label: String, frame: NSRect)] {
+        chips.map { (label: $0.button.chipTitle, frame: $0.button.convert($0.button.bounds, to: view)) }
     }
 
     func smokeAllTitleMinX(in view: NSView?) -> CGFloat? {

@@ -234,15 +234,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Main menu
 
     /// The minimal menu bar this app needs to function without a nib:
-    /// App (Close ⌘W, Quit ⌘Q), Edit (standard text-editing selectors so
-    /// Cut/Copy/Paste/Undo work in Universal Input and Inline Edit), and Go
-    /// (Scope switching, PRD §9).
+    /// App (Close ⌘W, Quit ⌘Q), File (export, PRD §16.1), Edit (standard
+    /// text-editing selectors so Cut/Copy/Paste/Undo work in Universal
+    /// Input and Inline Edit), and Go (Scope switching, PRD §9).
     private func buildMainMenu() {
         let mainMenu = NSMenu(title: "Inbox")
 
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
         appMenuItem.submenu = buildAppMenu()
+
+        let fileMenuItem = NSMenuItem()
+        mainMenu.addItem(fileMenuItem)
+        fileMenuItem.submenu = buildFileMenu()
 
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
@@ -298,6 +302,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.window?.orderOut(nil)
     }
     #endif
+
+    // MARK: - File menu (PRD §16.1)
+
+    private func buildFileMenu() -> NSMenu {
+        let menu = NSMenu(title: "File")
+        let json = menu.addItem(withTitle: "Export as JSON…", action: #selector(exportJSON(_:)), keyEquivalent: "e")
+        json.keyEquivalentModifierMask = [.command, .shift]
+        json.target = self
+        let snapshot = menu.addItem(
+            withTitle: "Export Database Snapshot…",
+            action: #selector(exportSnapshot(_:)),
+            keyEquivalent: ""
+        )
+        snapshot.target = self
+        menu.addItem(.separator())
+        let reveal = menu.addItem(withTitle: "Show Data in Finder", action: #selector(showDataInFinder(_:)), keyEquivalent: "")
+        reveal.target = self
+        return menu
+    }
+
+    /// `Inbox-<yyyy-MM-dd>.<ext>`, the date in the user's calendar day.
+    private static func exportFileName(extension ext: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "Inbox-\(formatter.string(from: Date())).\(ext)"
+    }
+
+    @objc private func exportJSON(_ sender: Any?) {
+        guard let recordStore, let mainViewController else { return }
+        guard let url = Dialogs.saveExport(suggestedName: Self.exportFileName(extension: "json"), allowedExtension: "json") else {
+            mainViewController.focusInputAtEnd()
+            return
+        }
+        // Both reads are enqueued back to back on the serial DB queue, so no
+        // write can land between them and their completions arrive on main
+        // in this order (ARCHITECTURE §4) — the pair is a consistent snapshot.
+        var projects: Result<[Project], Error> = .success([])
+        recordStore.projects.listProjects { projects = $0 }
+        recordStore.listAllRecordsForExport { records in
+            do {
+                let document = InboxExport.Document(
+                    projects: try projects.get(),
+                    records: try records.get(),
+                    schemaVersion: try recordStore.currentSchemaVersion()
+                )
+                try InboxExport.encode(document).write(to: url, options: .atomic)
+            } catch {
+                Dialogs.persistenceFailure(error)
+            }
+            mainViewController.focusInputAtEnd()
+        }
+    }
+
+    @objc private func exportSnapshot(_ sender: Any?) {
+        guard let recordStore, let mainViewController else { return }
+        guard let url = Dialogs.saveExport(suggestedName: Self.exportFileName(extension: "sqlite"), allowedExtension: "sqlite") else {
+            mainViewController.focusInputAtEnd()
+            return
+        }
+        recordStore.writeSnapshot(to: url) { result in
+            if case .failure(let error) = result {
+                Dialogs.persistenceFailure(error)
+            }
+            mainViewController.focusInputAtEnd()
+        }
+    }
+
+    @objc private func showDataInFinder(_ sender: Any?) {
+        guard let recordStore, let mainViewController else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: recordStore.databasePath)])
+        mainViewController.focusInputAtEnd()
+    }
 
     /// Engine-off (user switch / no entitlement / smoke) stays silent.
     /// Engine-on with a non-available account shows the utility-bar label.
@@ -421,33 +498,46 @@ extension AppDelegate: NSWindowDelegate {
 /// `titlebarAppearsTransparent`, which covers the window's sidebar blur.
 /// Hide those fills (not the traffic lights) so the content material
 /// shows through the titlebar.
-private enum TitlebarBackdrop {
+///
+/// Re-checked 2026-08-22 on macOS 26.6: with the call disabled the probe
+/// finds no visible fill, so here it is a no-op; kept because it was
+/// added for 27 and costs microseconds. `visibleSystemFills` + the smoke
+/// assertion are the re-check mechanism on each new system.
+enum TitlebarBackdrop {
     static func hideSystemFill(in window: NSWindow) {
+        forEachSystemFill(in: window) { $0.isHidden = true }
+    }
+
+    /// Material views still showing in the titlebar — the smoke asserts
+    /// this is empty, which is also how the workaround gets re-checked on
+    /// each new system: disable the call, run the smoke.
+    static func visibleSystemFills(in window: NSWindow) -> [String] {
+        var names: [String] = []
+        forEachSystemFill(in: window) { view in
+            if !view.isHidden { names.append(NSStringFromClass(type(of: view))) }
+        }
+        return names
+    }
+
+    private static func forEachSystemFill(in window: NSWindow, _ body: (NSView) -> Void) {
         guard let closeButton = window.standardWindowButton(.closeButton) else { return }
         var cursor: NSView? = closeButton.superview
         var hops = 0
         while let view = cursor, hops < 5 {
-            hideFills(in: view, window: window)
+            for subview in view.subviews {
+                if subview === window.contentView || subview is NSButton { continue }
+                if subview is NSVisualEffectView {
+                    body(subview)
+                    continue
+                }
+                if #available(macOS 26.0, *), subview is NSGlassEffectView {
+                    body(subview)
+                }
+            }
             let name = NSStringFromClass(type(of: view))
             cursor = view.superview
             hops += 1
             if name.contains("TitlebarContainer") { break }
-        }
-    }
-
-    private static func hideFills(in view: NSView, window: NSWindow) {
-        for subview in view.subviews {
-            if subview === window.contentView { continue }
-            if subview is NSButton { continue }
-            if subview is NSVisualEffectView {
-                subview.isHidden = true
-                continue
-            }
-            if #available(macOS 26.0, *) {
-                if subview is NSGlassEffectView {
-                    subview.isHidden = true
-                }
-            }
         }
     }
 }

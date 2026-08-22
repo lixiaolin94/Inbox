@@ -15,6 +15,8 @@ enum ConflictMerger {
         var updatedAt: Int64
         var resolvedAt: Int64?
         var deletedAt: Int64?
+        /// Defaulted so pre-v4 ancestor snapshots (no key) still decode.
+        var conflictOf: String? = nil
     }
 
     struct ProjectFields: Equatable, Codable {
@@ -77,6 +79,13 @@ enum ConflictMerger {
             localTime: local.updatedAt,
             serverTime: server.updatedAt
         )
+        let conflictOf = mergeScalar(
+            local: local.conflictOf,
+            server: server.conflictOf,
+            ancestor: ancestor?.conflictOf,
+            localTime: local.updatedAt,
+            serverTime: server.updatedAt
+        )
         let updatedAt = max(local.updatedAt, server.updatedAt)
 
         if contentConflict {
@@ -88,7 +97,8 @@ enum ConflictMerger {
                 createdAt: server.createdAt,
                 updatedAt: updatedAt,
                 resolvedAt: resolvedAt,
-                deletedAt: deletedAt
+                deletedAt: deletedAt,
+                conflictOf: conflictOf
             )
             let localDuplicate = RecordFields(
                 content: local.content,
@@ -98,7 +108,8 @@ enum ConflictMerger {
                 createdAt: local.createdAt,
                 updatedAt: updatedAt,
                 resolvedAt: resolvedAt,
-                deletedAt: deletedAt
+                deletedAt: deletedAt,
+                conflictOf: conflictOf
             )
             return .keepBoth(server: serverVersion, localDuplicate: localDuplicate)
         }
@@ -117,7 +128,8 @@ enum ConflictMerger {
                 createdAt: local.createdAt,
                 updatedAt: updatedAt,
                 resolvedAt: resolvedAt,
-                deletedAt: deletedAt
+                deletedAt: deletedAt,
+                conflictOf: conflictOf
             )
         )
     }
@@ -201,7 +213,8 @@ extension ConflictMerger.RecordFields {
             createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             resolvedAt: record.resolvedAt,
-            deletedAt: record.deletedAt
+            deletedAt: record.deletedAt,
+            conflictOf: record.conflictOf
         )
     }
 

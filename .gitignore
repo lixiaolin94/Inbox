@@ -10,3 +10,6 @@ DerivedData/
 # source of truth (`xcodegen generate`). Ignore user state only; shared
 # schemes under xcshareddata stay versioned.
 xcuserdata/
+
+# Agent worktrees are local scratch checkouts.
+.claude/worktrees/

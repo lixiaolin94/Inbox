@@ -37,6 +37,10 @@ final class GroupHeaderCellView: NSTableCellView {
         addSubview(titleLabel)
         addSubview(disclosureView)
 
+        // The whole row is the control; the chevron is decoration.
+        setAccessibilityElement(true)
+        disclosureView.setAccessibilityElement(false)
+
         titleLeadingConstraint = titleLabel.leadingAnchor.constraint(
             equalTo: leadingAnchor,
             constant: LayoutChrome.contentInset
@@ -72,7 +76,12 @@ final class GroupHeaderCellView: NSTableCellView {
     func configure(title: String, isCollapsed: Bool, showsDisclosure: Bool = true) {
         titleLabel.stringValue = title
         disclosureView.isHidden = !showsDisclosure
-        guard showsDisclosure else { return }
+        setAccessibilityRole(showsDisclosure ? .button : .staticText)
+        guard showsDisclosure else {
+            setAccessibilityLabel(title)
+            return
+        }
+        setAccessibilityLabel("\(title), \(isCollapsed ? "collapsed" : "expanded")")
         let name = isCollapsed ? "chevron.right" : "chevron.down"
         let description = isCollapsed ? "Expand" : "Collapse"
         disclosureView.image = NSImage(systemSymbolName: name, accessibilityDescription: description)

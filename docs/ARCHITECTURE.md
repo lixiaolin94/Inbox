@@ -23,7 +23,7 @@ Inbox 是一个只做一件事的 macOS 工具：用键盘把 Record 记下来�
             Dialogs（所有模态弹窗） · Preferences（所有 UserDefaults 键）
 
 纯逻辑      ListRow（ListRows / TrashRows / ListRowIndex） · RowFocus · RecordSort · Scope
-            Record · Project（值类型模型）
+            Record · Project（值类型模型） · Export（JSON 导出文档与 Codable）
 
 存储        RecordStore（+Sync） · ProjectStore · SQLiteDatabase
 
@@ -37,7 +37,7 @@ App/          main · AppDelegate · LaunchConfiguration · Preferences · Setti
 Surfaces/     MainViewController(+Records/+Projects/+Smoke) · TrashViewController · Dialogs
 Views/        UniversalInputView · ScopeBarView · ScopeChipButton · RecordTableView · RecordCellView
               GroupHeaderCellView · GlassCapsuleView · RecordDragTypes
-Model/        Record · Project · Scope · ListRow · RowFocus · RecordSort
+Model/        Record · Project · Scope · ListRow · RowFocus · RecordSort · Export
 Storage/      SQLiteDatabase · RecordStore · RecordStore+Sync · ProjectStore
 Sync/         SyncEngine · SyncTypes · CKRecordMapping · ConflictMerger
 Diagnostics/  UISmokeRunner · SyncProbeRunner
@@ -49,7 +49,7 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 
 | 文件 | 负责 | 不负责 |
 |---|---|---|
-| `AppDelegate.swift` | 窗口创建与尺寸约束、主菜单（App/Edit/Go）、`⌘Number`、状态栏项、Undo/Redo 路由（field editor 优先于 Move-to-Trash 栈）、Settings 窗口 | 任何 Record/Project 业务 |
+| `AppDelegate.swift` | 窗口创建与尺寸约束、主菜单（App/File/Edit/Go）、File 导出入口（JSON / 快照 / Finder 定位）、`⌘Number`、状态栏项、Undo/Redo 路由（field editor 优先于 Move-to-Trash 栈）、Settings 窗口 | 任何 Record/Project 业务 |
 | `MainViewController.swift` | 状态（records/rows/scope/projects）、子视图装配与布局、焦点路由（Input ↔ Row Focus）、搜索、row↔record 映射、分组折叠、Trash surface 切换、table data source | 具体动作 |
 | `MainViewController+Records.swift` | Create、Priority、Resolve、Copy、Inline Edit、Move、Move to Trash + Undo/Redo | 布局、Project 列表 |
 | `MainViewController+Projects.swift` | Project 列表加载（唯一入口 `reloadProjectsAndSearch`）、Scope 切换与持久化、Project 新建/改名/删除/排序、All View 拖拽改 Project | Record 动作 |
@@ -58,11 +58,13 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 | `RecordTableView.swift` | Row Focus 键盘状态机（↑↓ 边界回 Input、←→/Space/Enter/M/⌫/⌘A/⌘C 分发、右键选区语义） | 数据 |
 | `RecordCellView.swift` | Record 行绘制、多行换行、Inline Edit 的 field editor 与行高自适应 | 持久化 |
 | `ScopeBarView.swift` / `ScopeChipButton.swift` | 横向 Scope 条、chip 样式与拖拽排序、`LayoutChrome` 常量 | — |
-| `Dialogs.swift` | 保存失败、Project 命名、删除确认、永久删除确认 | 焦点（由调用方决定） |
-| `Preferences.swift` | UserDefaults suite 切换；lastScope / collapsedGroups / sortOrder / showResolved / syncEnabled 的类型化访问器；字号与行高常量 | — |
+| `Dialogs.swift` | 保存失败、Project 命名、删除确认、永久删除确认、导出保存面板 | 焦点（由调用方决定） |
+| `Preferences.swift` | UserDefaults suite 切换；lastScope / collapsedGroups / sortOrder / showResolved / syncEnabled / lastSync{SucceededAt,Error,ErrorAt} 的类型化访问器；`.inboxAppearanceDidChange` / `.inboxSyncStatusDidChange` 通知名；字号与行高常量 | — |
 | `ListRow.swift` | `[Record] + [Project] + 折叠/搜索状态 → [ListRow]`；所有 row↔record 换算 | UI |
 | `RowFocus.swift` | Record 消失后的焦点继承规则 | — |
-| `RecordStore.swift` | schema 迁移、Record CRUD、LIKE 搜索、FTS 镜像维护、`batch` 扇出 | Project（在 `ProjectStore`） |
+| `RecordStore.swift` | schema 迁移（v4）、Record CRUD、LIKE 搜索（`onlyConflicts` 过滤）、FTS 镜像维护、`batch` 扇出、导出读取与 `VACUUM INTO` 快照、冲突对（`listConflicts` / `resolveConflict`，无损） | Project（在 `ProjectStore`） |
+| `Model/Export.swift` | JSON 导出文档（列名为键，含 Trash，不含同步元数据） | 文件选择（AppDelegate / Dialogs） |
+| `Diagnostics/RecordStore+Smoke.swift` | `#if DEBUG` 的冒烟专用写入（制造冲突对） | 生产逻辑 |
 | `RecordStore+Sync.swift` | 同步元数据信封、pending/tombstone、远端变更落库 | CloudKit 类型 |
 | `SyncEngine.swift` | CKSyncEngine 生命周期、账号状态、本地提交 → 上传、远端事件 → 落库 | 冲突规则（在 `ConflictMerger`） |
 
@@ -98,18 +100,18 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 
 ## 8. UI 组件原则：平台原生优先
 
-规则（SPEC §9）：先找 AppKit 现成控件/样式；只有平台控件无法表达 PRD 语义时才自绘；每个自绘组件在下表登记原因，打磨阶段逐项复审。
+规则（SPEC §9）：先找 AppKit 现成控件/样式；只有平台控件无法表达 PRD 语义**或实测更贵**时才自绘；每个自绘组件在下表登记原因，打磨阶段逐项复审。R7 的教训：系统 bezel 的绘制路径（CoreUI 素材 + 玻璃材质）比一个 CALayer 边框长得多，"平台组件 = 更快"对轻量自绘不成立——换之前先用微基准量（方法在 HISTORY 决策 10）。
 
 | 现状自绘 | 为什么自绘 | 平台候选 / 复审方向 |
 |---|---|---|
-| `ScopeChipButton`（330 行胶囊 chip，用于 Scope Bar、Resolved/Sort/Trash、Trash 动作） | 需要选中态不改宽度、`refusesFirstResponder`、symbol 固定槽位 | `NSButton.bezelStyle = .accessoryBarAction / .badge`（macOS 26 有玻璃样式）；Utility 栏最适合 `.accessoryBar` 系列；先替换 Utility/Trash 栏的四个按钮，Scope chip 最后 |
+| `ScopeChipButton`（胶囊 chip：Scope Bar、"+"、底栏 Resolved/Sort/Trash、Trash 动作栏） | 选中态不改宽度、`refusesFirstResponder`、symbol 固定槽位、拖拽排序与 drop；**且实测比平台 accessory-bar `NSButton` 便宜**（首绘 −3…−15 ms/个、重绘 −2…−5 ms/个，按实例累加；HISTORY 性能基线 R7） | 已评估并否决替换（R7）。保留；只需跟随系统深浅色与尺寸对齐，不追求系统 bezel 样式 |
 | `GlassCapsuleView` | Liquid Glass 在 26+ 才有，需 fallback | 保留，但已是"平台组件 + fallback"形态；等最低版本升到 26 后直接用 `NSGlassEffectView` |
-| `GroupHeaderCellView` + 手工折叠状态 | All View 分组折叠 | `NSOutlineView`（原生折叠/disclosure/动画/Accessibility）或 `NSTableView` group rows（`isGroupRow`）；这是最大的一块自绘，值得专门一个分支验证键盘语义是否保得住 |
+| `GroupHeaderCellView` + 手工折叠状态 | All View 分组折叠 | 已评估并否决 `NSOutlineView`（R8 微基准：首绘 +8 ms、每次 reload +1.5 ms，只有折叠更快）。保留；折叠手感如需提升，改 `insertRows/removeRows` 局部更新 |
 | `RecordCellView` 的 Inline Edit（field editor 测量与行高） | 多行自适应编辑 | 保留；`NSTextField` 已是平台组件，自定义只在测量 |
-| `ClearTableRowView` 的居中修正 | `usesAutomaticRowHeights` 的 3pt 偏移 | 复审是否仍需要（随 SDK 变化） |
-| `TitlebarBackdrop.hideSystemFill` | Tahoe 标题栏材质盖住 sidebar 模糊 | 系统修复后删除；属 workaround，不是设计 |
+| `ClearTableRowView.layout` + `frameOfCell` 拉宽 cell | AppKit 在 `.fullWidth` 下仍给 cell 6 pt 内缩 | 复审 2026-08-22（26.6）：仍需要；冒烟的文字轨断言即复审机制 |
+| `TitlebarBackdrop.hideSystemFill` | Tahoe/27 标题栏材质盖住 sidebar 模糊 | 26.6 上为空操作，为 27 保留；冒烟断言 `visibleSystemFills` 为空，系统修复后删除 |
 | 状态栏右键菜单的临时 `item.menu` | 左键开窗、右键菜单 | 保留（AppKit 无直接 API） |
-| 硬编码 keyCode（`RecordTableView`） | 早期实现 | 改用 `charactersIgnoringModifiers`，顺手修非美式布局的 `M` 键 |
+| ~~硬编码 keyCode（`RecordTableView`）~~ | — | 已改为按 `specialKey` / 字符判定（R7），`M` 在任何布局可用 |
 
 ## 9. 验证矩阵
 
@@ -128,4 +130,4 @@ Diagnostics/  UISmokeRunner · SyncProbeRunner
 - **启动路径约定**：`applicationDidFinishLaunching` 里第一帧之前只做"打开数据库 → 建控制器 → 建窗口 → 显示"；CloudKit 引擎、状态栏项、离线检测在首帧后 0.25 s 的延迟块里启动（`--sync-probe` 除外）。新增启动工作默认放进延迟块，除非它是第一帧可见的。
 - **诊断代码只在 DEBUG**：`Diagnostics/` 与 `+Smoke.swift` 整体 `#if DEBUG`；Release 里 `--ui-smoke`/`--sync-probe` 只是被解析然后忽略。
 - **缓存约定**：文本测量（`WrappingTextFieldCell`）、着色 symbol（`ScopeChipButton`）、DateFormatter 都是单入口或小字典缓存，键里包含所有影响结果的输入（宽度/字符串/字号、appearance 名）；不要加带淘汰策略的缓存。
-- **待测**：PRD §17.1 warm activation（窗口已存在、⌘Tab 回来）目前靠 `presentMainWindow` 即时完成，尚无数字。
+- **warm activation**（PRD §17.1）：App 自身部分中位 11 ms，冒烟每次运行都打印 `PERF warm-activation` 并以 100 ms 为门槛。

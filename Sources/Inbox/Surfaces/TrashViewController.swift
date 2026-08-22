@@ -119,9 +119,6 @@ final class TrashViewController: NSViewController {
         tableView.onRequestDelete = { [weak self] rows in
             self?.confirmPermanentDelete(records: self?.records(atRows: rows) ?? [])
         }
-        tableView.onRequestEscape = { [weak self] in
-            self?.onClose?()
-        }
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -142,6 +139,7 @@ final class TrashViewController: NSViewController {
         backButton.bezelStyle = .recessed
         backButton.isBordered = false
         backButton.font = .systemFont(ofSize: 13, weight: .semibold)
+        backButton.setAccessibilityLabel("Back to Inbox")
         backButton.translatesAutoresizingMaskIntoConstraints = false
         headerBar.addSubview(backButton)
 
@@ -387,4 +385,6 @@ extension TrashViewController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     var smokeAllowsMultipleSelection: Bool { tableView.allowsMultipleSelection }
+    var smokeActionChips: [ScopeChipButton] { [restoreButton, deletePermanentlyButton] }
+    var smokeTableIsFirstResponder: Bool { view.window?.firstResponder === tableView }
 }

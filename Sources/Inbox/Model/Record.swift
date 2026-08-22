@@ -12,6 +12,10 @@ struct Record: Equatable {
     var updatedAt: Int64
     var resolvedAt: Int64?
     var deletedAt: Int64?
+    /// Set only on the duplicate that a same-field content conflict produced
+    /// (PRD §15.3 Keep Both): the id of the original it was copied from. The
+    /// original stays unmarked; resolving the pair clears this.
+    var conflictOf: String? = nil
 
     var priorityValue: Priority {
         Priority(rawValue: priority) ?? .p2

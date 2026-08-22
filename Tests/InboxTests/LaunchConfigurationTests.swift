@@ -20,6 +20,13 @@ final class LaunchConfigurationTests: XCTestCase {
         XCTAssertTrue(path.contains("inbox-smoke-4242.sqlite"))
         XCTAssertTrue(path.contains("inbox-smoke-"))
         XCTAssertNil(config.syncProbe)
+        XCTAssertNil(config.snapshotDirectory)
+    }
+
+    func testUISmokeParsesSnapshotDirectory() {
+        let config = LaunchConfiguration.parse(["Inbox", "--ui-smoke", "--snapshot-dir", "/tmp/inbox-snap"])
+        XCTAssertTrue(config.isUISmoke)
+        XCTAssertEqual(config.snapshotDirectory, "/tmp/inbox-snap")
     }
 
     func testGenericPathFlagsOverrideSmokeDefaults() {
@@ -95,6 +102,29 @@ final class PreferencesTests: XCTestCase {
 
         Preferences.store.set(true, forKey: Preferences.syncEnabledKey)
         XCTAssertTrue(Preferences.isSyncEnabled)
+    }
+
+    func testSyncStatusRoundTripsAndClears() {
+        Preferences.configure(suiteName: suiteName)
+        XCTAssertNil(Preferences.lastSyncSucceededAt)
+        XCTAssertNil(Preferences.lastSyncError)
+        XCTAssertNil(Preferences.lastSyncErrorAt)
+
+        let succeededAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let failedAt = Date(timeIntervalSince1970: 1_700_000_060)
+        Preferences.lastSyncSucceededAt = succeededAt
+        Preferences.lastSyncError = "save failed 1: boom"
+        Preferences.lastSyncErrorAt = failedAt
+        XCTAssertEqual(Preferences.lastSyncSucceededAt, succeededAt)
+        XCTAssertEqual(Preferences.lastSyncError, "save failed 1: boom")
+        XCTAssertEqual(Preferences.lastSyncErrorAt, failedAt)
+
+        Preferences.lastSyncError = nil
+        Preferences.lastSyncErrorAt = nil
+        XCTAssertNil(Preferences.lastSyncError)
+        XCTAssertNil(Preferences.lastSyncErrorAt)
+        XCTAssertNil(Preferences.store.object(forKey: "com.inbox.lastSyncError"))
+        XCTAssertEqual(Preferences.lastSyncSucceededAt, succeededAt)
     }
 
     func testRecordFontSizeMatchesSystemBody() {

@@ -66,10 +66,10 @@ final class SyncTrackingTests: XCTestCase {
         try result.get()
     }
 
-    // MARK: - Schema v3
+    // MARK: - Schema v3 / v4
 
-    func testFreshDatabaseIsUserVersion3() throws {
-        XCTAssertEqual(try store.userVersion(), 3)
+    func testFreshDatabaseIsUserVersion4() throws {
+        XCTAssertEqual(try store.userVersion(), 4)
     }
 
     func testMigrationFromV2AddsSyncTablesAndPreservesRows() throws {
@@ -122,13 +122,88 @@ final class SyncTrackingTests: XCTestCase {
         }
 
         let migrated = try RecordStore(databasePath: dbPath)
-        XCTAssertEqual(try migrated.userVersion(), 3)
+        XCTAssertEqual(try migrated.userVersion(), 4)
         XCTAssertEqual(try migrated.recordByID("legacy-2")?.content, "v2 record")
 
         let pending = try migrated.pendingChanges()
         XCTAssertTrue(pending.contains { $0.entity == .record && $0.id == "legacy-2" && $0.changeType == .upsert })
         XCTAssertTrue(pending.contains { $0.entity == .project && $0.id == "proj-1" && $0.changeType == .upsert })
         XCTAssertNil(try migrated.ckSystemFields(entity: .record, id: "legacy-2"))
+    }
+
+    func testMigrationFromV3AddsConflictOfAndPreservesRows() throws {
+        let dbPath = tempDirectory.appendingPathComponent("migrate-v3.sqlite").path
+        do {
+            // Literal v3 schema (v1 + v2 + v3 DDL), not RecordStore's constants,
+            // so the test keeps proving the real upgrade path.
+            let rawDB = try SQLiteDatabase(path: dbPath)
+            try rawDB.exec("""
+                CREATE TABLE record (
+                    id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    priority INTEGER NOT NULL DEFAULT 2,
+                    status INTEGER NOT NULL DEFAULT 0,
+                    project_id TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    resolved_at INTEGER,
+                    deleted_at INTEGER,
+                    ck_system_fields BLOB
+                );
+                CREATE INDEX idx_record_status_created ON record(status, created_at DESC);
+                CREATE VIRTUAL TABLE record_fts USING fts5(
+                    record_id UNINDEXED,
+                    content,
+                    tokenize = 'trigram'
+                );
+                CREATE TABLE project (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    manual_order INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    ck_system_fields BLOB
+                );
+                CREATE TABLE pending_change (
+                    entity TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    change_type TEXT NOT NULL,
+                    PRIMARY KEY (entity, id)
+                );
+                CREATE TABLE tombstone (
+                    entity TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    deleted_at INTEGER NOT NULL,
+                    PRIMARY KEY (entity, id)
+                );
+                """)
+            try rawDB.run(
+                """
+                INSERT INTO record
+                    (id, content, priority, status, project_id, created_at, updated_at,
+                     resolved_at, deleted_at, ck_system_fields)
+                VALUES (?, ?, 1, 1, NULL, 1000, 2000, 2000, NULL, ?)
+                """,
+                bindings: [.text("legacy-3"), .text("v3 record"), .blob(Data([0x01]))]
+            )
+            try rawDB.run(
+                "INSERT INTO record_fts (record_id, content) VALUES (?, ?)",
+                bindings: [.text("legacy-3"), .text("v3 record")]
+            )
+            try rawDB.setUserVersion(3)
+        }
+
+        let migrated = try RecordStore(databasePath: dbPath)
+        XCTAssertEqual(try migrated.userVersion(), 4)
+        let stored = try migrated.recordByID("legacy-3")
+        XCTAssertEqual(stored?.content, "v3 record")
+        XCTAssertEqual(stored?.priority, 1)
+        XCTAssertEqual(stored?.status, 1)
+        XCTAssertEqual(stored?.resolvedAt, 2000)
+        XCTAssertNil(stored?.conflictOf)
+        XCTAssertEqual(try migrated.ckSystemFields(entity: .record, id: "legacy-3"), Data([0x01]))
+        // v3 -> v4 is column-only: no pending upsert is manufactured for old rows.
+        XCTAssertTrue(try migrated.pendingChanges().isEmpty)
     }
 
     // MARK: - Pending / tombstone
@@ -267,6 +342,35 @@ final class SyncTrackingTests: XCTestCase {
         XCTAssertEqual(try store.recordByID(local.id)?.content, "server content")
         XCTAssertEqual(try store.recordByID(duplicateID)?.content, "local content")
         XCTAssertNotEqual(duplicateID, local.id)
+
+        // The duplicate is the marked half of the pair; the original is not.
+        XCTAssertEqual(try store.recordByID(duplicateID)?.conflictOf, local.id)
+        XCTAssertNil(try store.recordByID(local.id)?.conflictOf)
+        // It uploads with the marker so the other device sees the pair too.
+        XCTAssertTrue(try store.pendingChanges().contains { $0.id == duplicateID && $0.changeType == .upsert })
+        XCTAssertEqual(try store.loadRecordForUpload(id: duplicateID)?.0.conflictOf, local.id)
+    }
+
+    func testApplyFetchedRecordStoresRemoteConflictMarker() throws {
+        var payload = ConflictMerger.RecordFields(
+            content: "their duplicate",
+            priority: 2,
+            status: 0,
+            projectID: nil,
+            createdAt: 10,
+            updatedAt: 10,
+            resolvedAt: nil,
+            deletedAt: nil
+        )
+        payload.conflictOf = "remote-orig"
+        XCTAssertEqual(try store.applyFetchedRecord(id: "remote-dup", payload: payload, metadata: nil), .applied)
+        XCTAssertEqual(try store.recordByID("remote-dup")?.conflictOf, "remote-orig")
+
+        // A later fetch that clears the marker (resolved elsewhere) clears it here.
+        payload.conflictOf = nil
+        payload.updatedAt = 20
+        XCTAssertEqual(try store.applyFetchedRecord(id: "remote-dup", payload: payload, metadata: nil), .applied)
+        XCTAssertNil(try store.recordByID("remote-dup")?.conflictOf)
     }
 
     func testMetadataEnvelopeRoundTrip() {

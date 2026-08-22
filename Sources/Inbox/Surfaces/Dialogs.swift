@@ -1,9 +1,22 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// The app's modal prompts, kept together so both surfaces share wording
 /// and layout. Each runs modally on the main thread and returns the answer;
 /// callers decide where focus goes afterwards.
 enum Dialogs {
+    /// Save panel for File ▸ Export (PRD §16.1). Returns the chosen URL, or
+    /// nil when cancelled. The panel itself asks before overwriting.
+    static func saveExport(suggestedName: String, allowedExtension: String) -> URL? {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = suggestedName
+        if let type = UTType(filenameExtension: allowedExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     /// Generic failure alert for a store write that did not commit. Callers
     /// that hold user input (Create, Inline Edit) restore it themselves —
     /// No Silent Data Loss.

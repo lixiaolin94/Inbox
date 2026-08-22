@@ -107,7 +107,7 @@ final class InboxSyncEngine: @unchecked Sendable {
             let pending = try store.pendingChanges()
             enqueue(pending)
         } catch {
-            Self.logger.error("failed to replay pending changes: \(error.localizedDescription, privacy: .public)")
+            recordFailure("failed to replay pending changes: \(error.localizedDescription)")
         }
     }
 
@@ -133,8 +133,12 @@ final class InboxSyncEngine: @unchecked Sendable {
             await handleFetchedRecordZoneChanges(fetched)
         case .sentRecordZoneChanges(let sent):
             await handleSentRecordZoneChanges(sent)
+        case .didFetchRecordZoneChanges(let fetched):
+            // Fires after every zone fetch, changes or not — the only
+            // completion event that carries an error (§15.4 diagnosable).
+            if fetched.error == nil { recordSuccess() }
         case .sentDatabaseChanges, .willFetchChanges, .willFetchRecordZoneChanges,
-             .didFetchRecordZoneChanges, .didFetchChanges, .willSendChanges, .didSendChanges:
+             .didFetchChanges, .willSendChanges, .didSendChanges:
             break
         @unknown default:
             break
@@ -164,7 +168,7 @@ final class InboxSyncEngine: @unchecked Sendable {
                 return CKRecordMapping.makeProject(from: pair.0, metadata: pair.1)
             }
         } catch {
-            Self.logger.error("upload payload failed for \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            recordFailure("upload payload failed for \(id): \(error.localizedDescription)")
         }
         return nil
     }
@@ -243,12 +247,13 @@ final class InboxSyncEngine: @unchecked Sendable {
             replayPendingIntoEngine()
             notifyUI()
         } catch {
-            Self.logger.error("failed to reset CloudKit metadata: \(error.localizedDescription, privacy: .public)")
+            recordFailure("failed to reset CloudKit metadata: \(error.localizedDescription)")
         }
     }
 
     private func handleFetchedRecordZoneChanges(_ fetched: CKSyncEngine.Event.FetchedRecordZoneChanges) async {
         var didApply = false
+        var failed = false
         for modification in fetched.modifications {
             let ckRecord = modification.record
             do {
@@ -289,7 +294,8 @@ final class InboxSyncEngine: @unchecked Sendable {
                     break
                 }
             } catch {
-                Self.logger.error("apply fetched record failed: \(error.localizedDescription, privacy: .public)")
+                failed = true
+                recordFailure("apply fetched record failed: \(error.localizedDescription)")
             }
         }
 
@@ -319,12 +325,16 @@ final class InboxSyncEngine: @unchecked Sendable {
                 }
                 didApply = true
             } catch {
-                Self.logger.error("apply remote deletion failed: \(error.localizedDescription, privacy: .public)")
+                failed = true
+                recordFailure("apply remote deletion failed: \(error.localizedDescription)")
             }
         }
 
         if didApply {
             notifyUI()
+        }
+        if !failed {
+            recordSuccess()
         }
     }
 
@@ -345,6 +355,7 @@ final class InboxSyncEngine: @unchecked Sendable {
     }
 
     private func handleSentRecordZoneChanges(_ sent: CKSyncEngine.Event.SentRecordZoneChanges) async {
+        var failed = !sent.failedRecordSaves.isEmpty || !sent.failedRecordDeletes.isEmpty
         for saved in sent.savedRecords {
             let entity: SyncEntity?
             let ancestorJSON: String
@@ -371,7 +382,8 @@ final class InboxSyncEngine: @unchecked Sendable {
                     )
                 }
             } catch {
-                Self.logger.error("ack upload failed: \(error.localizedDescription, privacy: .public)")
+                failed = true
+                recordFailure("ack upload failed: \(error.localizedDescription)")
             }
         }
 
@@ -382,12 +394,16 @@ final class InboxSyncEngine: @unchecked Sendable {
                     try RecordStore.acknowledgeDeletion(db: self.store.db, entity: .project, id: deletedID.recordName)
                 }
             } catch {
-                Self.logger.error("ack delete failed: \(error.localizedDescription, privacy: .public)")
+                failed = true
+                recordFailure("ack delete failed: \(error.localizedDescription)")
             }
         }
 
-        for failed in sent.failedRecordSaves {
-            await handleFailedSave(failed)
+        for failedSave in sent.failedRecordSaves {
+            await handleFailedSave(failedSave)
+        }
+        if !failed {
+            recordSuccess()
         }
     }
 
@@ -413,13 +429,13 @@ final class InboxSyncEngine: @unchecked Sendable {
                 }
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(failed.record.recordID)])
             } catch {
-                Self.logger.error("unknownItem recovery failed: \(error.localizedDescription, privacy: .public)")
+                recordFailure("unknownItem recovery failed: \(error.localizedDescription)")
             }
         case .notAuthenticated, .accountTemporarilyUnavailable, .networkFailure,
              .networkUnavailable, .requestRateLimited, .serviceUnavailable, .zoneBusy:
             Self.logger.info("transient save error \(error.code.rawValue); engine will retry")
         default:
-            Self.logger.error("save failed \(error.code.rawValue): \(error.localizedDescription, privacy: .public)")
+            recordFailure("save failed \(error.code.rawValue): \(error.localizedDescription)")
         }
     }
 
@@ -456,7 +472,7 @@ final class InboxSyncEngine: @unchecked Sendable {
                 break
             }
         } catch {
-            Self.logger.error("serverRecordChanged apply failed: \(error.localizedDescription, privacy: .public)")
+            recordFailure("serverRecordChanged apply failed: \(error.localizedDescription)")
             engine.state.add(pendingRecordZoneChanges: [.saveRecord(server.recordID)])
         }
     }
@@ -480,6 +496,30 @@ final class InboxSyncEngine: @unchecked Sendable {
     private func notifyUI() {
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .inboxDidApplyRemoteChanges, object: nil)
+        }
+    }
+
+    // MARK: - Status (PRD §15.2, §15.4)
+
+    private func recordSuccess() {
+        Preferences.lastSyncSucceededAt = Date()
+        Preferences.lastSyncError = nil
+        Preferences.lastSyncErrorAt = nil
+        postStatusChange()
+    }
+
+    /// Terminal failures only. Transient save errors the engine retries
+    /// stay on the info log so a short outage never reads as a problem.
+    private func recordFailure(_ message: String) {
+        Self.logger.error("\(message, privacy: .public)")
+        Preferences.lastSyncError = message
+        Preferences.lastSyncErrorAt = Date()
+        postStatusChange()
+    }
+
+    private func postStatusChange() {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .inboxSyncStatusDidChange, object: nil)
         }
     }
 }

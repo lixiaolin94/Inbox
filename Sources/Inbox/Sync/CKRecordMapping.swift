@@ -25,6 +25,7 @@ enum CKRecordMapping {
         ckRecord["updatedAt"] = NSNumber(value: local.updatedAt)
         ckRecord["resolvedAt"] = local.resolvedAt.map(NSNumber.init(value:))
         ckRecord["deletedAt"] = local.deletedAt.map(NSNumber.init(value:))
+        ckRecord["conflictOf"] = local.conflictOf as CKRecordValue?
         return ckRecord
     }
 
@@ -46,7 +47,8 @@ enum CKRecordMapping {
             createdAt: int64(ckRecord, "createdAt") ?? 0,
             updatedAt: int64(ckRecord, "updatedAt") ?? 0,
             resolvedAt: int64(ckRecord, "resolvedAt"),
-            deletedAt: int64(ckRecord, "deletedAt")
+            deletedAt: int64(ckRecord, "deletedAt"),
+            conflictOf: string(ckRecord, "conflictOf")
         )
     }
 

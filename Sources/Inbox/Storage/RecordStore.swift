@@ -10,6 +10,14 @@ enum RecordStoreError: Error, Equatable, CustomStringConvertible {
     }
 }
 
+/// How the user settles a conflict pair (PRD §15.3). Nothing is destroyed:
+/// a discarded side is moved to Trash exactly like Move to Trash.
+enum ConflictResolution {
+    case keepThis
+    case keepOther
+    case keepBoth
+}
+
 /// Local SQLite-backed storage for Records.
 ///
 /// All DB access runs on a single serial queue; every public method dispatches
@@ -33,6 +41,9 @@ final class RecordStore {
     let queue = DispatchQueue(label: "com.inbox.recordstore")
     let db: SQLiteDatabase
 
+    /// Where the main file lives; File ▸ Show Data in Finder reveals it.
+    let databasePath: String
+
     /// Project CRUD, sharing this store's queue and connection (PRD §3.3).
     let projects: ProjectStore
 
@@ -45,6 +56,7 @@ final class RecordStore {
     init(databasePath: String) throws {
         let directory = (databasePath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        self.databasePath = databasePath
         db = try SQLiteDatabase(path: databasePath)
         try Self.migrate(db)
         projects = ProjectStore(db: db, queue: queue)
@@ -240,12 +252,15 @@ final class RecordStore {
     /// `includeResolved` is the Show Resolved visibility flag (PRD §6.6, §11):
     /// Off (default) searches Open only; On searches Open and Resolved in
     /// the current Scope. Trashed rows are never returned here.
+    /// `onlyConflicts` narrows the same query to conflict pairs — both the
+    /// marked duplicate and the original it points at (PRD §15.3).
     func search(
         term: String,
         scope: Scope,
         token: Int,
         sortOrder: RecordSort = .newestFirst,
         includeResolved: Bool = false,
+        onlyConflicts: Bool = false,
         completion: @escaping (Result<[Record], Error>, Int) -> Void
     ) {
         queue.async { [db] in
@@ -255,7 +270,8 @@ final class RecordStore {
                     searchTerm: term,
                     scope: scope,
                     sortOrder: sortOrder,
-                    includeResolved: includeResolved
+                    includeResolved: includeResolved,
+                    onlyConflicts: onlyConflicts
                 )
             }
             DispatchQueue.main.async { completion(result, token) }
@@ -268,6 +284,73 @@ final class RecordStore {
         queue.async { [db] in
             let result = Result { try Self.fetchTrashed(db: db) }
             DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    // MARK: - Export (PRD §16.1)
+
+    /// Every row that still exists, whatever its status — open, resolved
+    /// and trashed — oldest first. Nothing is filtered: the export is the
+    /// user's data, not a view of it.
+    func listAllRecordsForExport(completion: @escaping (Result<[Record], Error>) -> Void) {
+        queue.async { [db] in
+            let result = Result { try Self.fetchAllForExport(db: db) }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// `PRAGMA user_version`, stamped into the JSON export so a reader
+    /// knows which docs/SCHEMA.md the column set belongs to.
+    func currentSchemaVersion() throws -> Int {
+        try queue.sync { try db.userVersion() }
+    }
+
+    /// `VACUUM INTO`: a consistent, compacted, standalone copy of the whole
+    /// database — valid under WAL without copying `-wal`/`-shm`, and taken
+    /// on the DB queue so no write interleaves. SQLite refuses to overwrite,
+    /// so an existing target (the save panel already asked) is removed first.
+    func writeSnapshot(to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        queue.async { [db] in
+            let result = Result {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                }
+                try db.run("VACUUM INTO ?", bindings: [.text(url.path)])
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    // MARK: - Conflict pairs (PRD §15.3)
+
+    /// Unresolved Keep Both duplicates (rows carrying `conflict_of`), newest
+    /// first, Trash excluded. One row per pair, so `.count` is the badge
+    /// number; the originals only come back through `search(onlyConflicts:)`.
+    func listConflicts(completion: @escaping (Result<[Record], Error>) -> Void) {
+        queue.async { [db] in
+            let result = Result { try Self.fetchConflicts(db: db) }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Settles the pair `id` belongs to; `id` may be either half. Lossless:
+    /// a discarded side goes to Trash (restorable), never deleted. If the
+    /// counterpart is already gone (trashed or deleted on another device)
+    /// every resolution degrades to clearing the marker. Touched rows get
+    /// `updated_at = now` and a pending upsert so the outcome syncs.
+    /// Unknown id is `RecordStoreError.notFound`.
+    func resolveConflict(
+        id: String,
+        resolution: ConflictResolution,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = Result { try Self.applyConflictResolution(db: self.db, id: id, resolution: resolution) }
+            if case .success(let touched) = result, !touched.isEmpty {
+                self.onDidCommitChange?(touched.map { PendingChange(entity: .record, id: $0, changeType: .upsert) })
+            }
+            DispatchQueue.main.async { completion(result.map { _ in () }) }
         }
     }
 
@@ -355,6 +438,12 @@ final class RecordStore {
         SELECT 'project', id, 'upsert' FROM project;
     """
 
+    /// Conflict pairs (PRD §15.3): a Keep Both duplicate records the id of
+    /// the original it was copied from. Every other row is NULL.
+    private static let schemaV4SQL = """
+    ALTER TABLE record ADD COLUMN conflict_of TEXT;
+    """
+
     /// Runs each pending version step in order inside its own transaction, so
     /// a v1 database upgrades in place and a brand-new database walks the
     /// same path from 0. Each step is independently rollback-safe.
@@ -386,6 +475,17 @@ final class RecordStore {
             do {
                 try db.exec(schemaV3SQL)
                 try db.setUserVersion(3)
+                try db.exec("COMMIT;")
+            } catch {
+                try? db.exec("ROLLBACK;")
+                throw error
+            }
+        }
+        if try db.userVersion() < 4 {
+            try db.exec("BEGIN IMMEDIATE;")
+            do {
+                try db.exec(schemaV4SQL)
+                try db.setUserVersion(4)
                 try db.exec("COMMIT;")
             } catch {
                 try? db.exec("ROLLBACK;")
@@ -503,21 +603,28 @@ final class RecordStore {
             guard try fetchByID(db: db, id: id) != nil else {
                 throw RecordStoreError.notFound
             }
-            try db.run(
-                "UPDATE record SET status = ?, deleted_at = ?, updated_at = ? WHERE id = ?",
-                bindings: [
-                    .int64(Int64(RecordStatus.trashed.rawValue)),
-                    .int64(now),
-                    .int64(now),
-                    .text(id)
-                ]
-            )
+            try markTrashed(db: db, id: id, now: now)
             try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
             try db.exec("COMMIT;")
         } catch {
             try? db.exec("ROLLBACK;")
             throw error
         }
+    }
+
+    /// The Move to Trash write itself, inside the caller's transaction.
+    /// Shared with conflict resolution so a discarded side restores exactly
+    /// like any other trashed Record.
+    private static func markTrashed(db: SQLiteDatabase, id: String, now: Int64) throws {
+        try db.run(
+            "UPDATE record SET status = ?, deleted_at = ?, updated_at = ? WHERE id = ?",
+            bindings: [
+                .int64(Int64(RecordStatus.trashed.rawValue)),
+                .int64(now),
+                .int64(now),
+                .text(id)
+            ]
+        )
     }
 
     private static func applyRestoreFromTrash(db: SQLiteDatabase, id: String) throws -> Record {
@@ -590,8 +697,106 @@ final class RecordStore {
         return records
     }
 
+    /// `id` breaks ties between rows created in the same millisecond so the
+    /// same database always exports in the same order.
+    private static func fetchAllForExport(db: SQLiteDatabase) throws -> [Record] {
+        var records: [Record] = []
+        try db.query("SELECT \(recordColumns) FROM record ORDER BY created_at ASC, id ASC") { stmt in
+            records.append(recordFromRow(stmt))
+        }
+        return records
+    }
+
+    private static func fetchConflicts(db: SQLiteDatabase) throws -> [Record] {
+        var records: [Record] = []
+        try db.query(
+            """
+            SELECT \(recordColumns) FROM record
+            WHERE conflict_of IS NOT NULL AND status != ?
+            ORDER BY created_at DESC
+            """,
+            bindings: [.int64(Int64(RecordStatus.trashed.rawValue))]
+        ) { stmt in
+            records.append(recordFromRow(stmt))
+        }
+        return records
+    }
+
+    /// The live counterpart of `record` in its pair: the original when
+    /// `record` is the duplicate, otherwise the newest duplicate pointing at
+    /// it. A trashed counterpart does not count — that pair is settled.
+    private static func conflictCounterpart(db: SQLiteDatabase, of record: Record) throws -> Record? {
+        var counterpart: Record?
+        if let originalID = record.conflictOf {
+            counterpart = try fetchByID(db: db, id: originalID)
+        } else {
+            try db.query(
+                """
+                SELECT \(recordColumns) FROM record
+                WHERE conflict_of = ? AND status != ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                bindings: [.text(record.id), .int64(Int64(RecordStatus.trashed.rawValue))]
+            ) { stmt in
+                counterpart = recordFromRow(stmt)
+            }
+        }
+        guard let counterpart, counterpart.status != RecordStatus.trashed.rawValue else { return nil }
+        return counterpart
+    }
+
+    /// Returns the ids whose rows changed, for pending upserts.
+    private static func applyConflictResolution(
+        db: SQLiteDatabase,
+        id: String,
+        resolution: ConflictResolution
+    ) throws -> [String] {
+        let now = currentTimeMillis()
+        try db.exec("BEGIN IMMEDIATE;")
+        do {
+            guard let record = try fetchByID(db: db, id: id) else {
+                throw RecordStoreError.notFound
+            }
+            let counterpart = try conflictCounterpart(db: db, of: record)
+            var touched: [String] = []
+            if let counterpart {
+                switch resolution {
+                case .keepThis:
+                    try markTrashed(db: db, id: counterpart.id, now: now)
+                    touched.append(counterpart.id)
+                case .keepOther:
+                    try markTrashed(db: db, id: record.id, now: now)
+                    touched.append(record.id)
+                case .keepBoth:
+                    break
+                }
+            }
+            // Clearing the duplicate's marker is what settles the pair — even
+            // when that duplicate was just trashed, so a later Restore does
+            // not resurrect the conflict.
+            let duplicateID = record.conflictOf != nil ? record.id : counterpart?.id
+            if let duplicateID {
+                try db.run(
+                    "UPDATE record SET conflict_of = NULL, updated_at = ? WHERE id = ?",
+                    bindings: [.int64(now), .text(duplicateID)]
+                )
+                if !touched.contains(duplicateID) {
+                    touched.append(duplicateID)
+                }
+            }
+            for touchedID in touched {
+                try SyncTracking.registerPending(db: db, entity: .record, id: touchedID, changeType: .upsert)
+            }
+            try db.exec("COMMIT;")
+            return touched
+        } catch {
+            try? db.exec("ROLLBACK;")
+            throw error
+        }
+    }
+
     static let recordColumns =
-        "id, content, priority, status, project_id, created_at, updated_at, resolved_at, deleted_at"
+        "id, content, priority, status, project_id, created_at, updated_at, resolved_at, deleted_at, conflict_of"
 
     static func fetchByID(db: SQLiteDatabase, id: String) throws -> Record? {
         var result: Record?
@@ -609,7 +814,8 @@ final class RecordStore {
         searchTerm: String,
         scope: Scope,
         sortOrder: RecordSort,
-        includeResolved: Bool
+        includeResolved: Bool,
+        onlyConflicts: Bool
     ) throws -> [Record] {
         let trimmed = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
         let columns = recordColumns
@@ -629,6 +835,15 @@ final class RecordStore {
         if !trimmed.isEmpty {
             conditions.append("content LIKE ? ESCAPE '\\'")
             bindings.append(.text("%" + escapeLikePattern(trimmed) + "%"))
+        }
+        if onlyConflicts {
+            conditions.append(
+                """
+                (conflict_of IS NOT NULL OR id IN (
+                    SELECT conflict_of FROM record WHERE conflict_of IS NOT NULL AND status != 2
+                ))
+                """
+            )
         }
 
         var records: [Record] = []
@@ -651,7 +866,8 @@ final class RecordStore {
             createdAt: columnInt64(stmt, 5),
             updatedAt: columnInt64(stmt, 6),
             resolvedAt: columnInt64OrNil(stmt, 7),
-            deletedAt: columnInt64OrNil(stmt, 8)
+            deletedAt: columnInt64OrNil(stmt, 8),
+            conflictOf: columnText(stmt, 9)
         )
     }
 

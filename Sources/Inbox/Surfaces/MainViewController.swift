@@ -25,13 +25,24 @@ final class MainViewController: NSViewController {
     let scopeBar = ScopeBarView()
     let tableView = RecordTableView()
     let scrollView = NSScrollView()
-    private let utilityBar = NSView()
-    private let resolvedChip = ScopeChipButton(title: "Resolved")
-    private let sortChip = ScopeChipButton(title: "Newest")
+    /// Bottom-bar controls are the same custom chip as the Scope Bar, on
+    /// purpose: measured against platform accessory-bar NSButtons the chip
+    /// paints ~3–8 ms faster on first draw and ~2 ms per redraw each, and
+    /// it is maintained for the Scope Bar anyway (HISTORY 性能基线, R7).
+    let utilityBar = NSView()
+    let resolvedChip = ScopeChipButton(title: "Resolved")
+    let sortChip = ScopeChipButton(title: "Newest")
+    /// Weak "N conflicts" badge (PRD §15.3); hidden while the count is 0.
+    /// Clicking filters the list to the conflict pairs and back.
+    let conflictsChip = ScopeChipButton(title: "")
     let offlineNoticeLabel = NSTextField(labelWithString: "iCloud unavailable · offline")
-    private let trashButton = ScopeChipButton(title: "Trash")
+    let trashButton = ScopeChipButton(title: "Trash")
 
     var records: [Record] = []
+    /// Both halves of every unresolved conflict pair in `records` (PRD
+    /// §15.3): the marked duplicates plus the originals they point at.
+    /// Derived in `rebuildRows()`, so a reload is the only way it changes.
+    var conflictPairIDs: Set<String> = []
     /// Table rows derived from `records` + `projects` + collapse state.
     /// Every row↔record conversion goes through `ListRowIndex` on this array.
     var rows: [ListRow] = []
@@ -52,6 +63,9 @@ final class MainViewController: NSViewController {
     /// from Preferences in `viewDidLoad` and written back on change.
     var sortOrder: RecordSort = .newestFirst
     var showResolved = false
+    /// Conflicts-chip filter. Session state only — a pending conflict is
+    /// not a preference, so it is never persisted.
+    var showOnlyConflicts = false
 
     /// Non-nil while a row's Content is in Inline Edit (PRD §8.5). This is
     /// the third focus state beyond Input Focus / Row Focus. It is a table
@@ -248,6 +262,12 @@ final class MainViewController: NSViewController {
         sortChip.translatesAutoresizingMaskIntoConstraints = false
         sortChip.setContentHuggingPriority(.required, for: .horizontal)
 
+        conflictsChip.symbolName = "exclamationmark.triangle"
+        conflictsChip.isHidden = true
+        conflictsChip.onClick = { [weak self] in self?.toggleShowOnlyConflicts() }
+        conflictsChip.translatesAutoresizingMaskIntoConstraints = false
+        conflictsChip.setContentHuggingPriority(.required, for: .horizontal)
+
         trashButton.onClick = { [weak self] in self?.openTrash() }
         trashButton.translatesAutoresizingMaskIntoConstraints = false
         trashButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -262,6 +282,7 @@ final class MainViewController: NSViewController {
         utilityBar.translatesAutoresizingMaskIntoConstraints = false
         utilityBar.addSubview(resolvedChip)
         utilityBar.addSubview(sortChip)
+        utilityBar.addSubview(conflictsChip)
         utilityBar.addSubview(offlineNoticeLabel)
         utilityBar.addSubview(trashButton)
 
@@ -275,9 +296,12 @@ final class MainViewController: NSViewController {
             sortChip.leadingAnchor.constraint(equalTo: resolvedChip.trailingAnchor, constant: LayoutChrome.chipSpacing),
             sortChip.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
 
+            conflictsChip.leadingAnchor.constraint(equalTo: sortChip.trailingAnchor, constant: LayoutChrome.chipSpacing),
+            conflictsChip.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
+
             offlineNoticeLabel.trailingAnchor.constraint(equalTo: trashButton.leadingAnchor, constant: -8),
             offlineNoticeLabel.centerYAnchor.constraint(equalTo: utilityBar.centerYAnchor),
-            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: sortChip.trailingAnchor, constant: 8)
+            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: conflictsChip.trailingAnchor, constant: 8)
         ])
     }
 
@@ -288,6 +312,8 @@ final class MainViewController: NSViewController {
     private func applyResolvedChipSymbol() {
         resolvedChip.symbolName = showResolved ? "eye" : "eye.slash"
         resolvedChip.toolTip = showResolved ? "Hide Resolved" : "Show Resolved"
+        resolvedChip.setAccessibilityLabel(resolvedChip.toolTip)
+        resolvedChip.setAccessibilityValue(showResolved ? "on" : "off")
     }
 
     private func toggleShowResolved() {
@@ -297,22 +323,51 @@ final class MainViewController: NSViewController {
         performSearch(term: inputField.stringValue, preservingFocus: true)
     }
 
-    private func presentSortMenu() {
+    private func toggleShowOnlyConflicts() {
+        showOnlyConflicts.toggle()
+        conflictsChip.isSelectedScope = showOnlyConflicts
+        conflictsChip.setAccessibilityValue(showOnlyConflicts ? "on" : "off")
+        performSearch(term: inputField.stringValue, preservingFocus: true)
+    }
+
+    /// Re-counts after every list reload (an indexed query, cheap enough
+    /// to not be worth caching). Reaching 0 while the filter is on switches
+    /// it off and re-searches, so the list never ends up empty for no
+    /// visible reason.
+    func refreshConflictsChip() {
+        store.listConflicts { [weak self] result in
+            guard let self, case .success(let conflicts) = result else { return }
+            let count = conflicts.count
+            self.conflictsChip.chipTitle = "\(count) conflict\(count == 1 ? "" : "s")"
+            self.conflictsChip.isHidden = count == 0
+            if count == 0, self.showOnlyConflicts {
+                self.toggleShowOnlyConflicts()
+            }
+        }
+    }
+
+    /// Long names in the menu, checkmark on the current sort; the chip
+    /// face shows the short `chipTitle`. Built per click — an NSMenu is
+    /// cheap (<1 ms), a resident NSPopUpButton is not.
+    func makeSortMenu() -> NSMenu {
         let menu = NSMenu()
         for order in RecordSort.allCases {
             let item = NSMenuItem(title: order.menuTitle, action: #selector(sortMenuChosen(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = order.rawValue
+            item.representedObject = order
             item.state = order == sortOrder ? .on : .off
             menu.addItem(item)
         }
-        let point = NSPoint(x: 0, y: sortChip.bounds.height + 4)
-        menu.popUp(positioning: nil, at: point, in: sortChip)
+        return menu
     }
 
-    @objc private func sortMenuChosen(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let selected = RecordSort(rawValue: raw),
+    private func presentSortMenu() {
+        let point = NSPoint(x: 0, y: sortChip.bounds.height + 4)
+        makeSortMenu().popUp(positioning: nil, at: point, in: sortChip)
+    }
+
+    @objc func sortMenuChosen(_ sender: NSMenuItem) {
+        guard let selected = sender.representedObject as? RecordSort,
               selected != sortOrder else { return }
         sortOrder = selected
         sortChip.chipTitle = selected.chipTitle
@@ -400,6 +455,9 @@ final class MainViewController: NSViewController {
     /// so the first keystroke is never dropped.
     func focusInputAtEnd() {
         guard let window = view.window else { return }
+        // Selection is Row Focus state; an inactive (grey) highlight left
+        // behind under Input Focus has no function and reads as a stray.
+        tableView.deselectAll(nil)
         window.makeFirstResponder(inputField)
         if let editor = inputField.currentEditor() {
             let end = editor.string.utf16.count
@@ -476,12 +534,14 @@ final class MainViewController: NSViewController {
             scope: currentScope,
             token: generation,
             sortOrder: sortOrder,
-            includeResolved: showResolved
+            includeResolved: showResolved,
+            onlyConflicts: showOnlyConflicts
         ) { [weak self] result, token in
             guard let self, token == self.searchGeneration else { return }
             if case .success(let records) = result {
                 self.records = records
                 self.rebuildRowsAndReload()
+                self.refreshConflictsChip()
                 if !selectRecordIDs.isEmpty, selectRecordIDs.contains(where: { self.tableRow(forRecordID: $0) != nil }) {
                     self.returnFocusToRecords(ids: selectRecordIDs)
                     return
@@ -528,6 +588,11 @@ final class MainViewController: NSViewController {
             isCollapsed: { collapsed.contains(Preferences.collapseKey($0)) },
             showResolved: showResolved
         )
+        conflictPairIDs = records.reduce(into: Set<String>()) { ids, record in
+            guard let originalID = record.conflictOf else { return }
+            ids.insert(record.id)
+            ids.insert(originalID)
+        }
     }
 
     func rebuildRowsAndReload() {
@@ -599,6 +664,12 @@ final class MainViewController: NSViewController {
 // MARK: - NSTextFieldDelegate
 
 extension MainViewController: NSTextFieldDelegate {
+    /// A mouse click into Universal Input bypasses `focusInputAtEnd`; clear
+    /// the Row Focus selection here too.
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        tableView.deselectAll(nil)
+    }
+
     func controlTextDidChange(_ obj: Notification) {
         performSearch(term: inputField.stringValue)
     }
@@ -645,7 +716,7 @@ extension MainViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .record(let record):
             let cell = tableView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? RecordCellView
                 ?? RecordCellView(identifier: Self.cellIdentifier)
-            cell.configure(with: record)
+            cell.configure(with: record, isConflicted: conflictPairIDs.contains(record.id))
             return cell
         }
     }

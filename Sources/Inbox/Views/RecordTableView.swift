@@ -35,12 +35,10 @@ final class RecordTableView: NSTableView {
     /// Right-click: Record rows get Move to; Project group headers get
     /// Rename/Delete. Nil means no menu.
     var onBuildContextMenu: ((Int) -> NSMenu?)?
-    /// Called with the selected Record rows when ⌫ (keyCode 51) is pressed.
+    /// Called with the selected Record rows when ⌫ (Delete/Backspace) is pressed.
     var onRequestDelete: ((IndexSet) -> Void)?
     /// Called with the selected Record rows on ⌘C / Edit ▸ Copy.
     var onRequestCopy: ((IndexSet) -> Void)?
-    /// Esc. Nil means the event falls through to `super`.
-    var onRequestEscape: (() -> Void)?
 
     /// ⇧↑/⇧↓ range-selection state: the fixed end (`anchor`) and the moving
     /// end (`lead`). Any plain-arrow move or click invalidates it — detected
@@ -51,8 +49,46 @@ final class RecordTableView: NSTableView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
+    /// Automatic row heights are measured at the width the row first had;
+    /// AppKit does not re-measure on a width change, and `noteHeightOfRows`
+    /// only ever grows a row (HISTORY R4), so a wrapped row kept a stale
+    /// height after a resize (pixel snapshots: 3 lines in a 5-line row).
+    /// A full reload re-measures at the new width in both directions; the
+    /// cheap grow-only note keeps live resize fluid, the reload lands when
+    /// it ends. Height-only changes must not re-enter, hence the guard.
+    override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        guard widthChanged, usesAutomaticRowHeights, numberOfRows > 0 else { return }
+        if inLiveResize {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                self.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<self.numberOfRows))
+            }
+        } else {
+            reloadKeepingSelection()
+        }
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        if usesAutomaticRowHeights, numberOfRows > 0 {
+            reloadKeepingSelection()
+        }
+    }
+
+    private func reloadKeepingSelection() {
+        let selected = selectedRowIndexes
+        reloadData()
+        if !selected.isEmpty {
+            selectRowIndexes(selected, byExtendingSelection: false)
+        }
+    }
+
     /// AppKit still insets the cell inside the row (~6pt) even with
     /// `.fullWidth`. Stretch to the row so the 16pt rail matches All.
+    /// Re-checked 2026-08-22 on macOS 26.6: without this and the row
+    /// view's `layout()` the text rail lands at 31 instead of 25.
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         var frame = super.frameOfCell(atColumn: column, row: row)
         let rowFrame = rect(ofRow: row)
@@ -76,8 +112,10 @@ final class RecordTableView: NSTableView {
 
     override func keyDown(with event: NSEvent) {
         let shift = event.modifierFlags.contains(.shift)
-        switch event.keyCode {
-        case KeyCode.upArrow:
+        // Dispatch on the typed character, not the hardware keyCode: `M`
+        // sits on a different physical key on Dvorak / AZERTY layouts.
+        switch event.specialKey {
+        case .upArrow?:
             if shift {
                 extendSelection(direction: -1)
             } else if let prev = nearestNavigableRow(from: selectedRow, direction: -1) {
@@ -87,7 +125,7 @@ final class RecordTableView: NSTableView {
             } else {
                 onRequestReturnFocusToInput?()
             }
-        case KeyCode.downArrow:
+        case .downArrow?:
             if shift {
                 extendSelection(direction: 1)
             } else if let next = nearestNavigableRow(from: selectedRow, direction: 1) {
@@ -95,25 +133,19 @@ final class RecordTableView: NSTableView {
                 selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
                 scrollRowToVisible(next)
             }
-        case KeyCode.leftArrow:
+        case .leftArrow?:
             if !selectedNavigableRows.isEmpty, let onAdjustPriority {
                 onAdjustPriority(selectedNavigableRows, .raise)
             } else {
                 super.keyDown(with: event)
             }
-        case KeyCode.rightArrow:
+        case .rightArrow?:
             if !selectedNavigableRows.isEmpty, let onAdjustPriority {
                 onAdjustPriority(selectedNavigableRows, .lower)
             } else {
                 super.keyDown(with: event)
             }
-        case KeyCode.space:
-            if !selectedNavigableRows.isEmpty, let onToggleResolve {
-                onToggleResolve(selectedNavigableRows)
-            } else {
-                super.keyDown(with: event)
-            }
-        case KeyCode.returnKey, KeyCode.keypadEnter:
+        case .carriageReturn?, .enter?:
             // Inline Edit is a single-row state; on a multi-selection Enter
             // is a no-op rather than editing an arbitrary member.
             if selectedNavigableRows.count == 1, let row = selectedNavigableRows.first, let onRequestBeginInlineEdit {
@@ -121,21 +153,38 @@ final class RecordTableView: NSTableView {
             } else if selectedNavigableRows.isEmpty {
                 super.keyDown(with: event)
             }
-        case KeyCode.m:
-            if !selectedNavigableRows.isEmpty, let onRequestMoveMenu {
-                onRequestMoveMenu(selectedNavigableRows)
+        case .delete?:
+            // ⌫ (Delete/Backspace) deletes the selected Records. Chosen to
+            // match macOS convention: Finder, Mail, and Reminders all use ⌫
+            // to delete the selected item. Row Focus is not a text-editing
+            // state, so this does not conflict with character deletion —
+            // during Inline Edit / Universal Input the field editor is
+            // first responder and this keyDown is not invoked.
+            if !selectedNavigableRows.isEmpty, let onRequestDelete {
+                onRequestDelete(selectedNavigableRows)
             } else {
                 super.keyDown(with: event)
             }
-        case KeyCode.delete:
-            // ⌫ (keyCode 51, Delete/Backspace) deletes the selected Records.
-            // Chosen to match macOS convention: Finder, Mail, and Reminders
-            // all use ⌫ to delete the selected item. Row Focus is not a
-            // text-editing state, so this does not conflict with character
-            // deletion — during Inline Edit / Universal Input the field
-            // editor is first responder and this keyDown is not invoked.
-            if !selectedNavigableRows.isEmpty, let onRequestDelete {
-                onRequestDelete(selectedNavigableRows)
+        default:
+            keyDownCharacter(event)
+        }
+    }
+
+    /// Non-special keys: Space and the Move-menu letter. ⌘-combos normally
+    /// never reach keyDown (performKeyEquivalent runs first), but a ⌘M with
+    /// no menu item would — keep it out of the Move menu explicitly.
+    private func keyDownCharacter(_ event: NSEvent) {
+        let command = event.modifierFlags.contains(.command)
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case " "?:
+            if !selectedNavigableRows.isEmpty, let onToggleResolve {
+                onToggleResolve(selectedNavigableRows)
+            } else {
+                super.keyDown(with: event)
+            }
+        case "m"? where !command:
+            if !selectedNavigableRows.isEmpty, let onRequestMoveMenu {
+                onRequestMoveMenu(selectedNavigableRows)
             } else {
                 super.keyDown(with: event)
             }
@@ -283,17 +332,4 @@ final class ClearTableRowView: NSTableRowView {
         }
         return ClearTableRowView()
     }
-}
-
-private enum KeyCode {
-    static let upArrow: UInt16 = 126
-    static let downArrow: UInt16 = 125
-    static let leftArrow: UInt16 = 123
-    static let rightArrow: UInt16 = 124
-    static let returnKey: UInt16 = 36
-    static let keypadEnter: UInt16 = 76
-    static let space: UInt16 = 49
-    static let m: UInt16 = 46
-    static let delete: UInt16 = 51
-    static let escape: UInt16 = 53
 }

@@ -229,7 +229,7 @@ extension MainViewController {
         editingRowIndex = nil
         if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? RecordCellView {
             if let record = record(atTableRow: row) {
-                cell.configure(with: record)
+                cell.configure(with: record, isConflicted: conflictPairIDs.contains(record.id))
             }
             cell.endEditing()
             cell.onEditingEnded = nil
@@ -260,6 +260,11 @@ extension MainViewController {
             let selectedRows = tableView.selectedNavigableRows
             let targets = selectedRows.contains(row) ? records(atTableRows: selectedRows) : [record]
             let menu = NSMenu()
+            if conflictPairIDs.contains(record.id) {
+                let resolveItem = NSMenuItem(title: "Resolve Conflict", action: nil, keyEquivalent: "")
+                resolveItem.submenu = makeResolveConflictMenu(recordID: record.id)
+                menu.addItem(resolveItem)
+            }
             let moveItem = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
             moveItem.submenu = makeMoveDestinationMenu(for: targets)
             menu.addItem(moveItem)
@@ -352,6 +357,43 @@ extension MainViewController {
         returnFocusToRecords(ids: recordIDs)
     }
 
+    // MARK: - Resolve Conflict (PRD §15.3)
+
+    func makeResolveConflictMenu(recordID: String) -> NSMenu {
+        let menu = NSMenu()
+        for resolution in [ConflictResolution.keepThis, .keepOther, .keepBoth] {
+            let item = NSMenuItem(title: resolution.menuTitle, action: #selector(resolveConflictFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ConflictResolveCommand(recordID: recordID, resolution: resolution)
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func resolveConflictFromMenu(_ sender: NSMenuItem) {
+        guard let command = sender.representedObject as? ConflictResolveCommand else { return }
+        resolveConflict(id: command.recordID, resolution: command.resolution)
+    }
+
+    /// The side Keep This / Keep Other discards goes to Trash through the
+    /// store, not through `moveRecordsToTrash`, so it is NOT on the ⌘Z
+    /// stack (that stays Move-to-Trash-only, PRD §8.8); Trash ▸ Restore
+    /// is the recovery path. Focus: the acted-on row is selected before
+    /// the reload, so the search's focus preservation either keeps it (it
+    /// survived) or inherits the way Move to Trash does (it was trashed).
+    func resolveConflict(id: String, resolution: ConflictResolution) {
+        store.resolveConflict(id: id, resolution: resolution) { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                Dialogs.persistenceFailure(error)
+                self.refreshVisibleSurface()
+                return
+            }
+            self.returnFocusToRecords(ids: [id])
+            self.refreshVisibleSurface()
+        }
+    }
+
     // MARK: - Move to Trash (PRD §8.8) and Undo
 
     func moveSelectedRecordsToTrash(atRows rowIndexes: IndexSet) {
@@ -439,6 +481,8 @@ extension MainViewController {
         records.removeAll { idSet.contains($0.id) }
         rebuildRowsAndReload()
         inheritFocus(removedIDs: recordIDs, previousVisibleIDs: previousVisibleIDs)
+        // Trashing a duplicate settles its pair without a search.
+        refreshConflictsChip()
     }
 
     private func applyRestoreUI(recordIDs: [String]) {
@@ -447,6 +491,26 @@ extension MainViewController {
             return
         }
         performSearch(term: inputField.stringValue, preservingFocus: true, selectRecordIDs: recordIDs)
+    }
+}
+
+extension ConflictResolution {
+    var menuTitle: String {
+        switch self {
+        case .keepThis: return "Keep This"
+        case .keepOther: return "Keep Other"
+        case .keepBoth: return "Keep Both"
+        }
+    }
+}
+
+private final class ConflictResolveCommand: NSObject {
+    let recordID: String
+    let resolution: ConflictResolution
+
+    init(recordID: String, resolution: ConflictResolution) {
+        self.recordID = recordID
+        self.resolution = resolution
     }
 }
 

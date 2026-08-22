@@ -1,12 +1,13 @@
 import AppKit
 import ServiceManagement
 
-/// Standard Settings window (⌘,). Launch at Login and iCloud Sync.
+/// Standard Settings window (⌘,). Launch at Login, iCloud Sync and the
+/// read-only sync status (PRD §15.2, §15.4).
 final class SettingsWindowController: NSWindowController {
     convenience init() {
         let controller = SettingsViewController()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 180),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 200),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -14,7 +15,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "Settings"
         window.contentViewController = controller
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 420, height: 180))
+        window.setContentSize(NSSize(width: 420, height: 200))
         self.init(window: window)
     }
 }
@@ -23,15 +24,32 @@ final class SettingsViewController: NSViewController {
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch at Login", target: nil, action: nil)
     private let syncCheckbox = NSButton(checkboxWithTitle: "iCloud Sync", target: nil, action: nil)
     private let syncNoteLabel = NSTextField(wrappingLabelWithString: "Turning iCloud Sync on or off takes effect the next time Inbox launches.")
+    private let syncStatusLabel = NSTextField(wrappingLabelWithString: "")
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        return formatter
+    }()
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 180))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 200))
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setUp()
         refresh()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(refreshSyncStatus),
+            name: .inboxSyncStatusDidChange,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     override func viewWillAppear() {
@@ -56,7 +74,13 @@ final class SettingsViewController: NSViewController {
         syncNoteLabel.textColor = .secondaryLabelColor
         syncNoteLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        for subview in [generalTitle, launchAtLoginCheckbox, syncCheckbox, syncNoteLabel] {
+        syncStatusLabel.font = .systemFont(ofSize: 11)
+        syncStatusLabel.textColor = .secondaryLabelColor
+        syncStatusLabel.maximumNumberOfLines = 2
+        syncStatusLabel.lineBreakMode = .byTruncatingTail
+        syncStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        for subview in [generalTitle, launchAtLoginCheckbox, syncCheckbox, syncNoteLabel, syncStatusLabel] {
             view.addSubview(subview)
         }
 
@@ -73,7 +97,11 @@ final class SettingsViewController: NSViewController {
             syncNoteLabel.topAnchor.constraint(equalTo: syncCheckbox.bottomAnchor, constant: 4),
             syncNoteLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 42),
             syncNoteLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            syncNoteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20)
+
+            syncStatusLabel.topAnchor.constraint(equalTo: syncNoteLabel.bottomAnchor, constant: 4),
+            syncStatusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 42),
+            syncStatusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            syncStatusLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -20)
         ])
     }
 
@@ -95,6 +123,27 @@ final class SettingsViewController: NSViewController {
 
         syncCheckbox.isEnabled = InboxSyncEngine.hasCloudKitContainerEntitlement()
         syncCheckbox.state = Preferences.isSyncEnabled ? .on : .off
+        refreshSyncStatus()
+    }
+
+    /// Read-only; no timer — re-rendered on appear and on engine events.
+    @objc private func refreshSyncStatus() {
+        guard Preferences.isSyncEnabled, InboxSyncEngine.hasCloudKitContainerEntitlement() else {
+            syncStatusLabel.stringValue = "Sync is off"
+            return
+        }
+        var lines = ["Last synced: \(Preferences.lastSyncSucceededAt.map(Self.relative) ?? "never")"]
+        if let error = Preferences.lastSyncError {
+            let when = Preferences.lastSyncErrorAt.map { " (\(Self.relative($0)))" } ?? ""
+            lines.append("Last error: \(error)\(when)")
+        }
+        syncStatusLabel.stringValue = lines.joined(separator: "\n")
+    }
+
+    private static func relative(_ date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "just now" }
+        return relativeFormatter.localizedString(for: date, relativeTo: now)
     }
 
     private var canManageLaunchAtLogin: Bool {

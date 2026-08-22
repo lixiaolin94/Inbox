@@ -56,8 +56,10 @@ BIN=/tmp/inbox-dd/Build/Products/Debug/Inbox.app/Contents/MacOS/Inbox
 ## 已知坑
 
 - CloudKit 容器 `iCloud.com.xiaolin.Inbox` 当前为 **Development** 环境；分发前须切 Production 并部署 schema。
-- 键盘用硬编码 keyCode（RecordTableView.swift），非美式键盘布局下 `M` 键可能失效（HISTORY 清单有记录）。
+- 冒烟合成的键盘事件必须同时带 keyCode 与字符（`RecordTableView` 按字符判定）；只给 keyCode 的事件会被表格忽略。
+- 底栏用自绘 `ScopeChipButton` 是实测后的决定（比平台 accessory-bar 按钮便宜，见 HISTORY R7），不要"顺手"换成 `NSButton`。
 - 窗口尺寸：顶层 surface 用 autoresizing 而非四边 Auto Layout 钉死——否则窗口会吸附 fitting size 坍缩（见 HISTORY「窗口坍缩事故」）。
 - `NSScrollView.contentInsets` 不会扩展滚动范围；要给内容留尾部空间得放进 document view（Scope Bar 用 stack 的 edgeInsets）。
+- xctrace `--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 里的旧 Debug 包；剖析 Release 要复制包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`（HISTORY 决策 10）。
 - 跨 SDK 版本：macOS 27 SDK 的新成员（如 `NSGlassEffectView.effectIsInteractive`）在 26 上编译失败，`#available` 救不了编译期——用 KVC。
 - SPM 裸二进制（`swift run`）没有 bundle/entitlements：同步与 Launch at Login 自动禁用，属预期。

@@ -2,14 +2,19 @@ import AppKit
 
 extension Notification.Name {
     static let inboxAppearanceDidChange = Notification.Name("InboxAppearanceDidChange")
+    static let inboxSyncStatusDidChange = Notification.Name("InboxSyncStatusDidChange")
 }
 
 /// Single UserDefaults access point for persisted UI state (last Scope,
-/// collapsed groups, sort, Show Resolved) and the small Settings surface
-/// (Launch at Login / iCloud Sync). Exists so `--ui-smoke` can swap in an
-/// isolated suite, and so no view controller owns a defaults key.
+/// collapsed groups, sort, Show Resolved), the small Settings surface
+/// (Launch at Login / iCloud Sync) and the read-only sync status. Exists so
+/// `--ui-smoke` can swap in an isolated suite, and so no view controller
+/// owns a defaults key.
 enum Preferences {
     static let syncEnabledKey = "com.inbox.syncEnabled"
+    private static let lastSyncSucceededAtKey = "com.inbox.lastSyncSucceededAt"
+    private static let lastSyncErrorKey = "com.inbox.lastSyncError"
+    private static let lastSyncErrorAtKey = "com.inbox.lastSyncErrorAt"
     private static let lastScopeProjectIDKey = "com.inbox.lastScopeProjectID"
     private static let collapsedGroupsKey = "com.inbox.collapsedGroups"
     private static let sortOrderKey = "com.inbox.sortOrder"
@@ -27,6 +32,26 @@ enum Preferences {
         return store.bool(forKey: syncEnabledKey)
     }
 
+    // MARK: - Sync status (PRD §15.2, §15.4)
+
+    /// Written by the sync engine off the main thread (UserDefaults is
+    /// thread-safe); read by Settings. Only terminal failures land in
+    /// `lastSyncError` — transient errors the engine retries stay quiet.
+    static var lastSyncSucceededAt: Date? {
+        get { store.object(forKey: lastSyncSucceededAtKey) as? Date }
+        set { setOrRemove(newValue, forKey: lastSyncSucceededAtKey) }
+    }
+
+    static var lastSyncError: String? {
+        get { store.string(forKey: lastSyncErrorKey) }
+        set { setOrRemove(newValue, forKey: lastSyncErrorKey) }
+    }
+
+    static var lastSyncErrorAt: Date? {
+        get { store.object(forKey: lastSyncErrorAtKey) as? Date }
+        set { setOrRemove(newValue, forKey: lastSyncErrorAtKey) }
+    }
+
     /// macOS body text style (HIG). Not user-adjustable.
     static var recordFontSize: CGFloat {
         NSFont.preferredFont(forTextStyle: .body).pointSize
@@ -42,13 +67,7 @@ enum Preferences {
     /// check the id against the live Project list before using it.
     static var lastScopeProjectID: String? {
         get { store.string(forKey: lastScopeProjectIDKey) }
-        set {
-            if let newValue {
-                store.set(newValue, forKey: lastScopeProjectIDKey)
-            } else {
-                store.removeObject(forKey: lastScopeProjectIDKey)
-            }
-        }
+        set { setOrRemove(newValue, forKey: lastScopeProjectIDKey) }
     }
 
     /// Global list sort (PRD §10).
@@ -88,6 +107,14 @@ enum Preferences {
         switch id {
         case .inbox: return "inbox"
         case .project(let projectID): return projectID
+        }
+    }
+
+    private static func setOrRemove(_ value: Any?, forKey key: String) {
+        if let value {
+            store.set(value, forKey: key)
+        } else {
+            store.removeObject(forKey: key)
         }
     }
 

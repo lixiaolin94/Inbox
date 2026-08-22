@@ -14,11 +14,11 @@
 
 ## 版本管理
 
-Schema 版本通过 SQLite 内置的 `PRAGMA user_version` 记录，当前为 **3**。应用启动时（`RecordStore.init`）依次检查并按序执行每一个尚未应用的版本升级，每一步都在自己的事务（`BEGIN IMMEDIATE` / `COMMIT`，失败则 `ROLLBACK`）中完成，因此：
+Schema 版本通过 SQLite 内置的 `PRAGMA user_version` 记录，当前为 **4**。应用启动时（`RecordStore.init`）依次检查并按序执行每一个尚未应用的版本升级，每一步都在自己的事务（`BEGIN IMMEDIATE` / `COMMIT`，失败则 `ROLLBACK`）中完成，因此：
 
 - 全新数据库会从 0 依次执行到最新版本；
-- 已存在的 v1 数据库会走 v1 → v2 → v3，已有 Record 不受影响；
-- 已存在的 v2 数据库只会执行 v2 → v3；
+- 已存在的 v1 数据库会走 v1 → v2 → v3 → v4，已有 Record 不受影响；
+- 已存在的 v3 数据库只会执行 v3 → v4；
 - 任意一步失败都不会留下半程状态。
 
 ## `record` 表
@@ -37,10 +37,22 @@ Record 是产品的最小工作单元（PRD §3.2）。
 | `resolved_at` | `INTEGER` | Resolve 时写入当前时间（毫秒），Reopen 时清回 `NULL`。移入 Trash 或从 Trash 恢复都不会改变这一列——Resolved 状态的 Record 被删除再恢复后仍然是 Resolved（无损恢复）。 |
 | `deleted_at` | `INTEGER` | 移入 Trash 时写入当前时间（毫秒），恢复时清回 `NULL`。是软删除的标记字段，也是 Trash 列表按“最近删除优先”排序的依据。 |
 | `ck_system_fields` | `BLOB` | v3 新增。CloudKit 同步信封：`NSKeyedArchiver` 编码，内含 `sys`（`CKRecord.encodeSystemFields` 的原始字节）和 `anc`（上次成功上传/下载的字段 JSON，作为三方合并的共同祖先）。`NULL` 表示这条 Record 尚未上传过。应用层通过 `CKLocalMetadata` 编解码；不要当普通 JSON/文本读。 |
+| `conflict_of` | `TEXT` | v4 新增。冲突对标记：同字段内容冲突经 Keep Both 生成的副本在这里记录**原始 Record 的 `id`**；其余所有行为 `NULL`。随 CloudKit 同步（`conflictOf` 字段），两端都能看到同一个待处理冲突对。详见下文「冲突对」。 |
 
 索引：`idx_record_status_created` on `(status, created_at DESC)`，服务于最常见的“当前状态 + 时间排序”查询路径。
 
 时间戳统一使用 Unix **毫秒**（而不是秒）的原因：同一秒内创建多条 Record 时仍需要可预测、确定性的排序（见 `Record.swift` 注释）。
+
+### 冲突对
+
+PRD §15.3「Silent when safe, lossless when not」：两端离线改了同一条 Record 的 `content`，三方合并（`ConflictMerger`）无法判定谁覆盖谁时，本地会保留双方版本——原始 `id` 继续承载服务端内容（CloudKit recordName 不变），本地版本复制到一条**新 id** 的 Record 上。这条副本就是冲突对里的「duplicate」：
+
+- 副本的 `conflict_of` = 原始 Record 的 `id`；原始 Record 本身**不打标记**；
+- 副本照常上传，所以另一台设备收到的也是同一对（同样的 `conflict_of`）；
+- `RecordStore.listConflicts` 只列出 `conflict_of IS NOT NULL AND status != 2` 的副本；`search(onlyConflicts:)` 把副本与它指向的原始行一起返回；
+- 解决（`RecordStore.resolveConflict`）是无损的：Keep This / Keep Other 把被放弃的一方**移入 Trash**（与普通 Move to Trash 完全一样，可恢复），Keep Both 两条都留下；三种方式都会清空副本的 `conflict_of` 并刷新 `updated_at`、登记 `pending_change`，因此解决结果也会同步到另一端。对方已经不在（被另一端 Trash 或物理删除）时，解决退化为只清标记。
+
+外部脚本读这列时只需记住：`conflict_of` 非空 = 这行是某条 Record 的未解决冲突副本。
 
 ## `project` 表
 
@@ -121,6 +133,34 @@ content LIKE '%term%' ESCAPE '\'
 
 - **并发注意事项**：SQLite 通过 `sqlite3_busy_timeout`（5000ms）容忍短暂的锁等待，但长时间外部写入仍可能阻塞或被 Inbox 的写入阻塞。只读连接不受影响。
 
+## 导出格式
+
+File 菜单提供两种导出（PRD §16.1），都不要求停止 Inbox，也不会改动活动数据库。
+
+### JSON（File ▸ Export as JSON…，`⇧⌘E`）
+
+由 [`Sources/Inbox/Model/Export.swift`](../Sources/Inbox/Model/Export.swift) 的 `InboxExport.Document` 编码：`prettyPrinted` + `sortedKeys`、不转义 `/`、非 ASCII 字符原样输出。顶层字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `format_version` | 整数 | 导出格式版本，当前为 **1**。字段增删时步进。 |
+| `exported_at` | 整数 | 导出时刻，Unix 毫秒，与表里的时间戳同一口径。 |
+| `exported_at_iso8601` | 字符串 | 同一时刻的 ISO 8601（UTC）表示，方便人读。 |
+| `app` | 字符串 | 例如 `Inbox 0.2.0`（`CFBundleShortVersionString`）；SPM 裸二进制没有 bundle，写 `Inbox`。 |
+| `schema_version` | 整数 | 数据来源库的 `PRAGMA user_version`（当前 3），决定下面两组对象的列集合对应本文档哪个版本。 |
+| `projects` | 数组 | 每个元素是一行 `project`，键即列名：`id`、`name`、`manual_order`、`created_at`、`updated_at`；按 `manual_order` 升序。 |
+| `records` | 数组 | 每个元素是一行 `record`，键即列名：`id`、`content`、`priority`、`status`、`project_id`、`created_at`、`updated_at`、`resolved_at`、`deleted_at`；按 `created_at` 升序（同毫秒按 `id`）。**所有仍存在的行都在其中**——open、resolved、trashed 一个不少，靠 `status` 区分；`NULL` 列输出为 `null`，不省略键。 |
+
+不导出同步簿记：`ck_system_fields`、`pending_change`、`tombstone` 是设备本地状态，不是用户数据。
+
+### SQLite 快照（File ▸ Export Database Snapshot…）
+
+在 DB 串行队列上执行 `VACUUM INTO '<目标路径>'`，得到一份**独立、一致、已压缩**的数据库副本：它是整个库在那一刻的快照（包含 `ck_system_fields`、`pending_change`、`tombstone`、`record_fts`，什么都不排除），在 WAL 模式下同样有效，且**不需要**、也不会带 `-wal`/`-shm` 附属文件——可以直接用 `sqlite3` 或任何 SQLite 工具打开，不必像复制活动数据库那样先做 checkpoint。目标文件已存在时会先删除再写（`VACUUM INTO` 本身拒绝覆盖；保存面板已经确认过）。
+
+### 数据位置（File ▸ Show Data in Finder）
+
+在 Finder 中定位文首的 `inbox.sqlite`；旁边的 `-wal`/`-shm` 与 `ck-sync-state.json` 同属一份数据，不要单独移动或删除。
+
 ## 迁移历史
 
 | 版本 | 变更 | 对应提交 |
@@ -128,3 +168,4 @@ content LIKE '%term%' ESCAPE '\'
 | v1 | 创建 `record` 表、`idx_record_status_created` 索引、`record_fts`（FTS5 trigram）虚拟表 | S1：`90fe008` add sqlite wrapper and record store with fts5 schema |
 | v2 | 新增 `project` 表；`record.project_id` 沿用 v1 已有的松散 `TEXT` 列，无需改动 `record` | S3a：`44421e0` add schema v2 migration and ProjectStore |
 | v3 | `record` / `project` 增加 `ck_system_fields BLOB`；新增 `pending_change`、`tombstone`；升级时为已有行登记 pending upsert | S6：CloudKit 记录级同步 |
+| v4 | `record` 增加 `conflict_of TEXT`（Keep Both 副本指向原始 id，可解决的冲突对）；只加列，不改已有行 | v0.3.0：冲突中心 |

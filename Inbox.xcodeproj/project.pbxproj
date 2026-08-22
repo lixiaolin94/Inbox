@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		067D5FDBC687E5F0D58E3C45 /* RecordTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979DEDC8005DCCC9007E5916 /* RecordTableView.swift */; };
 		0889E0C8BAFDF68EF3C98C11 /* PriorityAndFocusLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */; };
+		0AEF0AC779E84329D4E963A6 /* ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF9E6BC5CF5B55501C96CC5 /* ExportTests.swift */; };
 		0D2796A7A0F992C8BD57CB47 /* MainViewController+Smoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A3EB615991EA717D2968F6 /* MainViewController+Smoke.swift */; };
 		164A5A279C2E504DD981CA1D /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */; };
 		16D3A52A8346F2EF2C16E4F4 /* RecordSortTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7F047492510E3A2AE451EF /* RecordSortTests.swift */; };
@@ -24,10 +25,13 @@
 		3BDFF4D912712B2B9A137664 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E309569B184275B649A98C9E /* libsqlite3.tbd */; };
 		3D2545B410EF2BAB14B6F810 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3383027E79276D888E3C978 /* Project.swift */; };
 		3D68BEE8A9CE8F26F3C3A488 /* Scope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E25AB1F98DC5BCAFEAB78B /* Scope.swift */; };
+		4B61AFBA4B7B16DB37603E5E /* ExportStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA02A0F45A3B63C44FC9C7B /* ExportStoreTests.swift */; };
 		501B3CB034A165C878AAA281 /* UniversalInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99030FD48CF6E70CEC3CFE5E /* UniversalInputView.swift */; };
 		510C9ABEA00CECD9E1636693 /* RecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 286814A8C91E939203729692 /* RecordStore.swift */; };
 		55C81C0A4420631EDB1C0B4E /* SyncProbeRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F54664DE538789BBE0A6E8 /* SyncProbeRunner.swift */; };
 		5603C041EBD54D75BAB948CB /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */; };
+		5FA5B95E693648E4975C3985 /* RecordStore+Smoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5225B709D6B760D8D584A25 /* RecordStore+Smoke.swift */; };
+		60AFC1879EFE3934DE5D3BD3 /* ConflictPairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61F2AE88ED53D03A9A2F1F8 /* ConflictPairTests.swift */; };
 		632FA35B5C0BCC7F18966D88 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3383027E79276D888E3C978 /* Project.swift */; };
 		65628214696FAE099B3E0D5D /* SyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9104E1DFEB40B49C961F5DDF /* SyncTypes.swift */; };
 		66C09C336C5B3EDA5E8FE704 /* ListRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 597618AABCEE8C89CD4631F7 /* ListRowTests.swift */; };
@@ -41,8 +45,10 @@
 		94F66B5CDA71291E9204CB7F /* RecordDragTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C5D062EFF3991CE8EAE33A1 /* RecordDragTypes.swift */; };
 		96C0B884E1E1A35530380483 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2BEB631BAA5C4D1E8CAA36 /* MainViewController.swift */; };
 		9D7FC261C078FCA36A17734C /* Dialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 410934E4F6823C0EBE0F6266 /* Dialogs.swift */; };
+		A2112DEBA70A964ED70864EE /* Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08495F16DC2DA052E3985367 /* Export.swift */; };
 		A455D0F68FC1FBEB0165CAB0 /* Record.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4608829EEB2273F7BA10638 /* Record.swift */; };
 		A79A7EFEE7C917BCA4D60139 /* LaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6D0B1FA4E6B2EB39D1A1A6 /* LaunchConfiguration.swift */; };
+		A7A940A61BC8527FE21938C4 /* Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08495F16DC2DA052E3985367 /* Export.swift */; };
 		A9D5732BC4ADD88C7AB80097 /* RowFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89370A8F8BA81F4F6366F1E1 /* RowFocus.swift */; };
 		AC5A62D3B29A68AD4D7C2B00 /* LaunchConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C8ABEDDDB553F30C38FD2A /* LaunchConfigurationTests.swift */; };
 		ACF2424191378282A9991623 /* RecordSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D0F91DF40EE5EBEB27A4C8 /* RecordSort.swift */; };
@@ -67,10 +73,12 @@
 		EEA2EEAF1D23CDFAAB306460 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29EC51B7A8B31104FFB2A34 /* main.swift */; };
 		F19081A763A6676F74D44A03 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E309569B184275B649A98C9E /* libsqlite3.tbd */; };
 		F2F4E2A0350950F2E09CA56B /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4CFAF4529A109F05AAC41A /* SettingsViewController.swift */; };
+		FFF7E7FAEBE26372D1CA7FBF /* CKRecordMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66DF998B58A87951BB868ACB /* CKRecordMappingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		041D1D8EF2FA14178C7B1021 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
+		08495F16DC2DA052E3985367 /* Export.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Export.swift; sourceTree = "<group>"; };
 		08F54664DE538789BBE0A6E8 /* SyncProbeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncProbeRunner.swift; sourceTree = "<group>"; };
 		0DFE0C8704BA7E6E259EFFBE /* UISmokeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UISmokeRunner.swift; sourceTree = "<group>"; };
 		1B4561087522EDEA87D4A330 /* InboxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = InboxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -88,6 +96,7 @@
 		597618AABCEE8C89CD4631F7 /* ListRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRowTests.swift; sourceTree = "<group>"; };
 		6563AB9338276A08F872B2DE /* RecordStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordStoreTests.swift; sourceTree = "<group>"; };
 		66B9954F57B92F39B8C767E7 /* TrashViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashViewController.swift; sourceTree = "<group>"; };
+		66DF998B58A87951BB868ACB /* CKRecordMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CKRecordMappingTests.swift; sourceTree = "<group>"; };
 		6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictMerger.swift; sourceTree = "<group>"; };
 		7973723523BC248A64B049CF /* Inbox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Inbox.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		82B540CE6DA05F17E7A0874D /* ScopeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScopeBarView.swift; sourceTree = "<group>"; };
@@ -105,17 +114,21 @@
 		AF32A330494737F18DE30C76 /* RecordStore+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecordStore+Sync.swift"; sourceTree = "<group>"; };
 		B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriorityAndFocusLogicTests.swift; sourceTree = "<group>"; };
 		BE6D0B1FA4E6B2EB39D1A1A6 /* LaunchConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchConfiguration.swift; sourceTree = "<group>"; };
+		BFA02A0F45A3B63C44FC9C7B /* ExportStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportStoreTests.swift; sourceTree = "<group>"; };
 		C29EC51B7A8B31104FFB2A34 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C5225B709D6B760D8D584A25 /* RecordStore+Smoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecordStore+Smoke.swift"; sourceTree = "<group>"; };
 		CC8445DA507D5E903F24BACE /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		CE08D385A0D02BDD2F3992D0 /* MainViewController+Records.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MainViewController+Records.swift"; sourceTree = "<group>"; };
 		E309569B184275B649A98C9E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		E82484CBE145A018A7D46247 /* ListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRow.swift; sourceTree = "<group>"; };
+		EAF9E6BC5CF5B55501C96CC5 /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
 		EC7F047492510E3A2AE451EF /* RecordSortTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordSortTests.swift; sourceTree = "<group>"; };
 		F2521A60513E857C5E36BCA2 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		F3383027E79276D888E3C978 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
 		F362E2A3D3721C4A4332541A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		F4608829EEB2273F7BA10638 /* Record.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Record.swift; sourceTree = "<group>"; };
 		F5A3EB615991EA717D2968F6 /* MainViewController+Smoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MainViewController+Smoke.swift"; sourceTree = "<group>"; };
+		F61F2AE88ED53D03A9A2F1F8 /* ConflictPairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictPairTests.swift; sourceTree = "<group>"; };
 		FC4CFAF4529A109F05AAC41A /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -187,6 +200,7 @@
 		7FBF2280D62194C3F255D8A8 /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				08495F16DC2DA052E3985367 /* Export.swift */,
 				E82484CBE145A018A7D46247 /* ListRow.swift */,
 				F3383027E79276D888E3C978 /* Project.swift */,
 				F4608829EEB2273F7BA10638 /* Record.swift */,
@@ -200,7 +214,11 @@
 		8B1B65C29404B346BBCC3D84 /* InboxTests */ = {
 			isa = PBXGroup;
 			children = (
+				66DF998B58A87951BB868ACB /* CKRecordMappingTests.swift */,
 				2BA52F1CD7CA5E280047A347 /* ConflictMergerTests.swift */,
+				F61F2AE88ED53D03A9A2F1F8 /* ConflictPairTests.swift */,
+				BFA02A0F45A3B63C44FC9C7B /* ExportStoreTests.swift */,
+				EAF9E6BC5CF5B55501C96CC5 /* ExportTests.swift */,
 				A6C8ABEDDDB553F30C38FD2A /* LaunchConfigurationTests.swift */,
 				597618AABCEE8C89CD4631F7 /* ListRowTests.swift */,
 				B172E2704FCF63E345F9CEAA /* PriorityAndFocusLogicTests.swift */,
@@ -226,6 +244,7 @@
 		BB1051F8006A8FB216885130 /* Diagnostics */ = {
 			isa = PBXGroup;
 			children = (
+				C5225B709D6B760D8D584A25 /* RecordStore+Smoke.swift */,
 				08F54664DE538789BBE0A6E8 /* SyncProbeRunner.swift */,
 				0DFE0C8704BA7E6E259EFFBE /* UISmokeRunner.swift */,
 			);
@@ -384,6 +403,7 @@
 				D61CBB503244968CA31944C0 /* CKRecordMapping.swift in Sources */,
 				5603C041EBD54D75BAB948CB /* ConflictMerger.swift in Sources */,
 				9D7FC261C078FCA36A17734C /* Dialogs.swift in Sources */,
+				A2112DEBA70A964ED70864EE /* Export.swift in Sources */,
 				946369A1639B805C8CA31980 /* GlassCapsuleView.swift in Sources */,
 				AF0CB9C2BDC2EBC863DA4419 /* GroupHeaderCellView.swift in Sources */,
 				A79A7EFEE7C917BCA4D60139 /* LaunchConfiguration.swift in Sources */,
@@ -399,6 +419,7 @@
 				2DAB3A8A903A0014CE309501 /* RecordCellView.swift in Sources */,
 				94F66B5CDA71291E9204CB7F /* RecordDragTypes.swift in Sources */,
 				ACF2424191378282A9991623 /* RecordSort.swift in Sources */,
+				5FA5B95E693648E4975C3985 /* RecordStore+Smoke.swift in Sources */,
 				774A843A6C25CB2636454F6D /* RecordStore+Sync.swift in Sources */,
 				510C9ABEA00CECD9E1636693 /* RecordStore.swift in Sources */,
 				067D5FDBC687E5F0D58E3C45 /* RecordTableView.swift in Sources */,
@@ -422,8 +443,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FFF7E7FAEBE26372D1CA7FBF /* CKRecordMappingTests.swift in Sources */,
 				164A5A279C2E504DD981CA1D /* ConflictMerger.swift in Sources */,
 				843F3F3811C45D6866B6F737 /* ConflictMergerTests.swift in Sources */,
+				60AFC1879EFE3934DE5D3BD3 /* ConflictPairTests.swift in Sources */,
+				A7A940A61BC8527FE21938C4 /* Export.swift in Sources */,
+				4B61AFBA4B7B16DB37603E5E /* ExportStoreTests.swift in Sources */,
+				0AEF0AC779E84329D4E963A6 /* ExportTests.swift in Sources */,
 				E1F5D2009EA149F75669A4A8 /* LaunchConfiguration.swift in Sources */,
 				AC5A62D3B29A68AD4D7C2B00 /* LaunchConfigurationTests.swift in Sources */,
 				361B5BD6DCBDE82469519183 /* ListRow.swift in Sources */,
@@ -453,15 +479,17 @@
 		1D5C7EBDF04A3E8542DBE3D0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				ICLOUD_CONTAINER_ENVIRONMENT = Development;
 				INFOPLIST_KEY_CFBundleDisplayName = Inbox;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.Inbox;
 				PRODUCT_NAME = Inbox;
 				SDKROOT = macosx;
@@ -560,16 +588,18 @@
 		7C156036E24E961F93E06759 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = production;
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				ICLOUD_CONTAINER_ENVIRONMENT = Production;
 				INFOPLIST_KEY_CFBundleDisplayName = Inbox;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.Inbox;
 				PRODUCT_NAME = Inbox;
 				SDKROOT = macosx;

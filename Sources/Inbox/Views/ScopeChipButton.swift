@@ -100,6 +100,7 @@ final class ScopeChipButton: NSButton {
     var isSelectedScope = false {
         didSet {
             guard oldValue != isSelectedScope else { return }
+            setAccessibilitySelected(isSelectedScope)
             applyAppearance()
         }
     }

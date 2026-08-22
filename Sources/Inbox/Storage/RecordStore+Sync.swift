@@ -182,6 +182,9 @@ extension RecordStore {
                     var duplicate = localDuplicate
                     duplicate.createdAt = now
                     duplicate.updatedAt = now
+                    // The duplicate is the visible half of the conflict pair;
+                    // it uploads with the marker so every device sees it.
+                    duplicate.conflictOf = id
                     try insertRecordPayload(
                         db: db,
                         id: duplicateID,
@@ -381,7 +384,7 @@ extension RecordStore {
             UPDATE record SET
                 content = ?, priority = ?, status = ?, project_id = ?,
                 created_at = ?, updated_at = ?, resolved_at = ?, deleted_at = ?,
-                ck_system_fields = ?
+                conflict_of = ?, ck_system_fields = ?
             WHERE id = ?
             """,
             bindings: recordBindings(id: id, payload: payload, metadata: metadata)
@@ -406,8 +409,8 @@ extension RecordStore {
             """
             INSERT INTO record
                 (id, content, priority, status, project_id, created_at, updated_at,
-                 resolved_at, deleted_at, ck_system_fields)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 resolved_at, deleted_at, conflict_of, ck_system_fields)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             bindings: [
                 .text(id),
@@ -419,6 +422,7 @@ extension RecordStore {
                 .int64(payload.updatedAt),
                 payload.resolvedAt.map(SQLiteValue.int64) ?? .null,
                 payload.deletedAt.map(SQLiteValue.int64) ?? .null,
+                payload.conflictOf.map(SQLiteValue.text) ?? .null,
                 metadata.map(SQLiteValue.blob) ?? .null
             ]
         )
@@ -492,6 +496,7 @@ extension RecordStore {
             .int64(payload.updatedAt),
             payload.resolvedAt.map(SQLiteValue.int64) ?? .null,
             payload.deletedAt.map(SQLiteValue.int64) ?? .null,
+            payload.conflictOf.map(SQLiteValue.text) ?? .null,
             metadata.map(SQLiteValue.blob) ?? .null,
             .text(id)
         ]
