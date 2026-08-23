@@ -54,6 +54,11 @@ targets:
         Release:
           ICLOUD_CONTAINER_ENVIRONMENT: Production
           APS_ENVIRONMENT: production
+          # Mirrors the entitlement for code (InboxSyncEngine.environment).
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: CLOUDKIT_PRODUCTION
+          # Distribution shape (Developer ID + notarization need it); the app
+          # uses no entitlement exceptions, so Debug stays off for speed.
+          ENABLE_HARDENED_RUNTIME: YES
           # Apple Silicon only: the x86_64 slice doubled the bundle (1.2 MB
           # per arch) for machines this app is never run on.
           ARCHS: arm64

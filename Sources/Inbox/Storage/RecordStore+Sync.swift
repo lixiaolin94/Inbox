@@ -17,6 +17,40 @@ extension RecordStore {
         try queue.sync { try SyncTracking.loadPending(db: db) }
     }
 
+    /// Forgets everything CloudKit-side (system fields, tombstones, pending
+    /// rows) and queues every record and project for upload. Local rows
+    /// are untouched. Used when the server side is gone or is a different
+    /// one: zone deleted / purged, or the app moved between the
+    /// Development and Production environments.
+    func requeueAllForSync() throws {
+        try queue.sync { try Self.requeueAllForSync(db: db) }
+    }
+
+    static func requeueAllForSync(db: SQLiteDatabase) throws {
+        var recordIDs: [String] = []
+        try db.query("SELECT id FROM record") { stmt in
+            if let id = columnText(stmt, 0) { recordIDs.append(id) }
+        }
+        let projectIDs = try ProjectStore.fetchAll(db: db).map(\.id)
+        try db.exec("BEGIN IMMEDIATE;")
+        do {
+            try db.exec("UPDATE record SET ck_system_fields = NULL;")
+            try db.exec("UPDATE project SET ck_system_fields = NULL;")
+            try db.exec("DELETE FROM tombstone;")
+            try db.exec("DELETE FROM pending_change;")
+            for id in recordIDs {
+                try SyncTracking.registerPending(db: db, entity: .record, id: id, changeType: .upsert)
+            }
+            for id in projectIDs {
+                try SyncTracking.registerPending(db: db, entity: .project, id: id, changeType: .upsert)
+            }
+            try db.exec("COMMIT;")
+        } catch {
+            try? db.exec("ROLLBACK;")
+            throw error
+        }
+    }
+
     func tombstones() throws -> [Tombstone] {
         try queue.sync { try SyncTracking.loadTombstones(db: db) }
     }

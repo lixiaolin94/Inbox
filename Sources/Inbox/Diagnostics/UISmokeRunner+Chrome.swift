@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 
 /// Chrome steps: window geometry, Scope Bar, pixel alignment, overlay bars,
@@ -622,3 +623,4 @@ extension UISmokeRunner {
 
     }
 }
+#endif

@@ -9,6 +9,17 @@ import Security
 /// serial queue. No actor — hops are explicit DispatchQueue calls.
 final class InboxSyncEngine: @unchecked Sendable {
     static let containerIdentifier = "iCloud.com.xiaolin.Inbox"
+    /// Which CloudKit environment this build talks to (entitlement
+    /// `icloud-container-environment`, mirrored by the compilation
+    /// condition project.yml sets for Release). Records synced against one
+    /// environment are unknown to the other, so a switch re-uploads.
+    static let environment: String = {
+        #if CLOUDKIT_PRODUCTION
+        return "production"
+        #else
+        return "development"
+        #endif
+    }()
     static let logger = Logger(subsystem: "com.xiaolin.Inbox", category: "sync")
 
     private let store: RecordStore
@@ -55,17 +66,33 @@ final class InboxSyncEngine: @unchecked Sendable {
 
     static func makeIfEnabled(store: RecordStore, stateURL: URL, launch: LaunchConfiguration) -> InboxSyncEngine? {
         guard shouldEnable(launch: launch) else { return nil }
+        if let last = Preferences.lastSyncEnvironment, last != environment {
+            // The library was last synced against the other environment:
+            // its server copies are not in this one, so every row goes up
+            // again (local-first, nothing is dropped). The per-environment
+            // state file means no stale change tokens either.
+            do {
+                try store.requeueAllForSync()
+                logger.info("CloudKit environment changed \(last, privacy: .public) → \(environment, privacy: .public); re-uploading the library")
+            } catch {
+                logger.error("re-queue after environment change failed: \(error.localizedDescription, privacy: .public)")
+                return nil
+            }
+        }
+        Preferences.lastSyncEnvironment = environment
         return InboxSyncEngine(store: store, stateURL: stateURL)
     }
 
+    /// One state file per environment: change tokens from Development are
+    /// meaningless against Production and vice versa.
     static func stateURL(databasePath: String?) -> URL {
         if let databasePath {
-            return URL(fileURLWithPath: databasePath + ".ck-sync-state")
+            return URL(fileURLWithPath: databasePath + ".ck-sync-state-\(environment)")
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Inbox", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        return support.appendingPathComponent("ck-sync-state.json")
+        return support.appendingPathComponent("ck-sync-state-\(environment).json")
     }
 
     static func hasCloudKitContainerEntitlement() -> Bool {
@@ -208,41 +235,7 @@ final class InboxSyncEngine: @unchecked Sendable {
     private func clearCloudKitMetadataAndRequeue() async {
         do {
             try await store.syncPerform {
-                let records: [Record] = try {
-                    var rows: [Record] = []
-                    try self.store.db.query("SELECT \(RecordStore.recordColumns) FROM record") { stmt in
-                        rows.append(RecordStore.recordFromRow(stmt))
-                    }
-                    return rows
-                }()
-                let projects = try ProjectStore.fetchAll(db: self.store.db)
-                try self.store.db.exec("BEGIN IMMEDIATE;")
-                do {
-                    try self.store.db.exec("UPDATE record SET ck_system_fields = NULL;")
-                    try self.store.db.exec("UPDATE project SET ck_system_fields = NULL;")
-                    try self.store.db.exec("DELETE FROM tombstone;")
-                    try self.store.db.exec("DELETE FROM pending_change;")
-                    for record in records {
-                        try SyncTracking.registerPending(
-                            db: self.store.db,
-                            entity: .record,
-                            id: record.id,
-                            changeType: .upsert
-                        )
-                    }
-                    for project in projects {
-                        try SyncTracking.registerPending(
-                            db: self.store.db,
-                            entity: .project,
-                            id: project.id,
-                            changeType: .upsert
-                        )
-                    }
-                    try self.store.db.exec("COMMIT;")
-                } catch {
-                    try? self.store.db.exec("ROLLBACK;")
-                    throw error
-                }
+                try RecordStore.requeueAllForSync(db: self.store.db)
             }
             replayPendingIntoEngine()
             notifyUI()
