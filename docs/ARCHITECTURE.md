@@ -92,6 +92,8 @@ Diagnostics/  UISmokeRunner(+Chrome/+Flows/+Snapshots) · RecordStore+Smoke · S
 | `GroupHeaderCellView.swift` | All View 分组头：标题、chevron（对齐 "+"）、折叠点击、右键 | — |
 | `EdgeDissolve.swift` | 列表上下的滚动驱动渐隐遮罩 | 布局 |
 | `RecordDragTypes.swift` | 拖拽 pasteboard 类型 | — |
+| **Resources/** | | |
+| `Assets.xcassets` | App 图标（`AppIcon.appiconset`，用户提供的 iconset）；SPM target 用 `exclude` 跳过 | — |
 | **Diagnostics/** | | |
 | `UISmokeRunner.swift` | `--ui-smoke` 驱动：步骤顺序、事件合成、等待/断言工具 | 生产逻辑 |
 | `UISmokeRunner+Chrome.swift` | 窗口几何、Scope Bar、像素对齐、覆盖栏、光学轨（墨迹）、底栏 | — |
