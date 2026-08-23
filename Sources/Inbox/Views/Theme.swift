@@ -56,9 +56,9 @@ enum Theme {
         /// Left edge of list text: All's letters plus `listTextNudge`.
         static var textRail: CGFloat { contentInset + chipTitlePadding / 2 + listTextNudge }
         /// Optical shift for the time column relative to the "+" glyph's
-        /// right edge. Positive = further left. The glyph edge alone read as
-        /// too far right on screen; the value is the user's eye.
-        static let timeTextNudge: CGFloat = 4
+        /// right edge. Positive = further left. The value is the user's eye:
+        /// the date's last glyph ends on the "+" / chevron ink edge.
+        static let timeTextNudge: CGFloat = 1
         /// Right edge of the time column, from the trailing window edge: the
         /// "+" chip's inner padding (the glyph's right edge lands 3 in from
         /// there) plus `timeTextNudge`.
@@ -86,9 +86,9 @@ enum Theme {
     /// and measures glyph edges against these; change a nudge or a chip
     /// metric and the smoke says whether the eye-level rule still holds.
     enum Optical {
-        /// The date's last glyph ends this far left of the chevron's ink
-        /// right edge: a vertical stroke next to a diagonal tucks in.
-        static let timeInsideChevron: CGFloat = 3
+        /// The date's last glyph ends on the chevron's ink right edge
+        /// (which is within half a point of the "+" glyph's).
+        static let timeInsideChevron: CGFloat = 0
         /// The group chevron's ink centre sits under the "+" glyph's centre.
         static let chevronUnderPlus: CGFloat = 0
         /// List text ink (the Priority glyph) may start this far right of
