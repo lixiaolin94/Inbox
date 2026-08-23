@@ -9,7 +9,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Inbox",
-            path: "Sources/Inbox"
+            path: "Sources/Inbox",
+            // The asset catalog is for the Xcode bundle; the bare SPM binary has
+            // no bundle to carry it.
+            exclude: ["Resources"]
         ),
         .testTarget(
             name: "InboxTests",
