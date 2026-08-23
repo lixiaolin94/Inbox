@@ -95,6 +95,7 @@ Diagnostics/  UISmokeRunner(+Chrome/+Flows/+Snapshots) · RecordStore+Smoke · S
 | **Resources/** | | |
 | `Assets.xcassets` | App 图标（`AppIcon.appiconset`，用户提供的 iconset）；SPM target 用 `exclude` 跳过 | — |
 | **Diagnostics/** | | |
+| `scripts/release.sh` + `ExportOptions.plist`（仓库根） | 分发：archive → Developer ID 导出 → 公证 → staple → zip；产物在 `build/`（gitignore） | — |
 | `UISmokeRunner.swift` | `--ui-smoke` 驱动：步骤顺序、事件合成、等待/断言工具 | 生产逻辑 |
 | `UISmokeRunner+Chrome.swift` | 窗口几何、Scope Bar、像素对齐、覆盖栏、光学轨（墨迹）、底栏 | — |
 | `UISmokeRunner+Flows.swift` | Create → Search → Priority → Resolve → Inline Edit → Delete → Undo 链路、双击、右键、冲突、Trash、Settings、窗口重开 | — |

@@ -17,8 +17,8 @@
 
 | 步骤 | 谁 |
 |---|---|
-| 决定分发方式：Developer ID 直发（需公证）或 App Store；对应 `ENABLE_HARDENED_RUNTIME` 与签名身份 | **用户** |
-| Archive（Xcode Product ▸ Archive 或 `xcodebuild archive`）并导出 | 用户/协调者 |
+| 分发方式已定：Developer ID 直发 + 公证（不上 App Store）。Release 已开 Hardened Runtime；`scripts/release.sh` 做 archive → Developer ID 导出（Xcode 云端签名，无需本地证书，已验证）→ 公证 → staple → `build/Inbox-<版本>.zip` | 协调者 |
+| 公证凭据（一次性）：`xcrun notarytool store-credentials inbox-notary --apple-id <Apple ID> --team-id YWQ4TY4VR5 --password <app 专用密码>`；之后跑 `scripts/release.sh` | **用户**存凭据 |
 | /Applications 形态下人工确认 Launch at Login 注册 | 用户 |
 | 对 Production 跑 `--sync-probe`：Release 包没有诊断代码，要用 Debug 配置钉到 Production 的构建：`xcodebuild -configuration Debug -derivedDataPath /tmp/inbox-dd-prod ICLOUD_CONTAINER_ENVIRONMENT=Production 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CLOUDKIT_PRODUCTION' build` | 协调者（已通过一次） |
 | 清理探针记录：Production 里有一条 `probe-prod-<时间戳>`（已同步进本地库，App 内 ⌫ 删除即可）；Development 容器可整体忽略 | 用户 |

@@ -13,3 +13,6 @@ xcuserdata/
 
 # Agent worktrees are local scratch checkouts.
 .claude/worktrees/
+
+# Release artefacts (scripts/release.sh)
+build/
