@@ -20,18 +20,19 @@
 2. **ListRow / ListRowIndex 是唯一的表行↔Record 映射层**：分组、Resolved 小节、导航跳过非 Record 行、焦点继承全部走它；列表结构改动先改这个纯函数层并补测试。
 3. **焦点继承**（Resolve/删除后）：下一条可见 → 上一条 → 回 Input；Show Resolved 开启时只在 Open 序列上走。纯函数在 RowFocus.swift。
 4. **Undo 覆盖 Resolve/Reopen、Move、Move to Trash**：窗口级 UndoManager 由 AppDelegate 路由（field editor 优先）；`groupsByEvent = false`，每个动作自开 undo 组（事件分组在异步 completion + 嵌套 run loop 下会把两步并成一步）；反向动作在 handler 开头同步注册。
-5. **同步元数据信封含"共同祖先"**：`ck_system_fields` 存 system fields + 上次同步的字段快照，用于区分"两端改了不同字段"（自动合并）与"同字段冲突"（无损保留双方）。规则见 ConflictMerger.swift 与 docs/SCHEMA.md。
-6. **窗口坍缩教训**：顶层 surface 四边用 Auto Layout 钉在 content view 上会让 NSWindow 吸附 fitting size 坍缩到 28pt。现方案：顶层 autoresizing + 挂载后 setContentSize + `constrainFrameRect` 套 minSize；冒烟有窗口几何断言。
-7. **xcodeproj 入库、project.yml 唯一权威**：Xcode 界面里点的设置必须回填 project.yml 再 `xcodegen generate`；增删 Swift 文件要重新生成。
-8. **留在 AppKit**（2026-08-22 复核）：键盘语义与启动体积是产品核心；打磨方向是少自绘、多平台组件，但**换之前要量**——轻量自绘 chip 实测比平台 bezel 按钮便宜（见基线）。理由与对比见 ARCHITECTURE §7–§8。
-9. **控制器按关注点拆 extension 而不是抽层**：同一个 `self`，零间接层，拆分只为导航与审阅范围；弹窗进 `Dialogs`、键进 `Preferences`、扇出进 `RecordStore.batch`。
-10. **显式行高**：两张表都不用 `usesAutomaticRowHeights`——它在 `reloadData()` 时把行高重置为估算值再逐行实测，滚动偏移被夹住；`noteHeightOfRows` 只长不缩。行高由 `RecordCellView.displayHeight` 用与绘制同一套 `cellSize` 测量并缓存。
-11. **光学对齐按墨迹裁判**：左右两条轨的关系（日期/chevron/"+"/All/P）写在 `Theme.Optical`，冒烟渲染位图扫描字形边缘断言；令牌（nudge）是手段，墨迹是裁判。
-12. **内存口径**：Activity Monitor「Memory」= `phys_footprint`（`footprint -p <pid>`），不是 RSS。Inbox Release 25 MB（最小 AppKit 窗口 17 MB）。
-13. **视觉语言来源**：tinycast 的 `docs/ui.md` + `Theme.swift` 写法（一段话、一条阶梯、令牌单源、不可变项、溶解参数）；没有采纳它的无边框面板形态与快捷键提示。
-14. **性能测量方法**：启动用"spawn → 首个 layer-0 窗口出现"计时（轮询 `CGWindowListCopyWindowInfo`），对照最小 AppKit 窗口程序作底价；体积看 `strip -x` 后单架构二进制；剖析用 xctrace Time Profiler——`--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 的旧 Debug 包，要复制 Release 包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`。控件微基准：单独冷进程、上屏 layer 路径、N=1 与 N=10、交替 A/B。
+5. **CloudKit 环境切换即重传**：Development 与 Production 互不相识，`Preferences.lastSyncEnvironment` 与编译条件 `CLOUDKIT_PRODUCTION`（Release）不一致时 `requeueAllForSync` 清掉系统字段、全量排队上传；同步状态文件按环境分名。Release 包没有诊断代码（`--ui-smoke` / `--sync-probe` 在 `#if DEBUG` 里），对 Production 验证要用钉到 Production 的 Debug 构建。
+6. **同步元数据信封含"共同祖先"**：`ck_system_fields` 存 system fields + 上次同步的字段快照，用于区分"两端改了不同字段"（自动合并）与"同字段冲突"（无损保留双方）。规则见 ConflictMerger.swift 与 docs/SCHEMA.md。
+7. **窗口坍缩教训**：顶层 surface 四边用 Auto Layout 钉在 content view 上会让 NSWindow 吸附 fitting size 坍缩到 28pt。现方案：顶层 autoresizing + 挂载后 setContentSize + `constrainFrameRect` 套 minSize；冒烟有窗口几何断言。
+8. **xcodeproj 入库、project.yml 唯一权威**：Xcode 界面里点的设置必须回填 project.yml 再 `xcodegen generate`；增删 Swift 文件要重新生成。
+9. **留在 AppKit**（2026-08-22 复核）：键盘语义与启动体积是产品核心；打磨方向是少自绘、多平台组件，但**换之前要量**——轻量自绘 chip 实测比平台 bezel 按钮便宜（见基线）。理由与对比见 ARCHITECTURE §7–§8。
+10. **控制器按关注点拆 extension 而不是抽层**：同一个 `self`，零间接层，拆分只为导航与审阅范围；弹窗进 `Dialogs`、键进 `Preferences`、扇出进 `RecordStore.batch`。
+11. **显式行高**：两张表都不用 `usesAutomaticRowHeights`——它在 `reloadData()` 时把行高重置为估算值再逐行实测，滚动偏移被夹住；`noteHeightOfRows` 只长不缩。行高由 `RecordCellView.displayHeight` 用与绘制同一套 `cellSize` 测量并缓存。
+12. **光学对齐按墨迹裁判**：左右两条轨的关系（日期/chevron/"+"/All/P）写在 `Theme.Optical`，冒烟渲染位图扫描字形边缘断言；令牌（nudge）是手段，墨迹是裁判。
+13. **内存口径**：Activity Monitor「Memory」= `phys_footprint`（`footprint -p <pid>`），不是 RSS。Inbox Release 25 MB（最小 AppKit 窗口 17 MB）。
+14. **视觉语言来源**：tinycast 的 `docs/ui.md` + `Theme.swift` 写法（一段话、一条阶梯、令牌单源、不可变项、溶解参数）；没有采纳它的无边框面板形态与快捷键提示。
+15. **性能测量方法**：启动用"spawn → 首个 layer-0 窗口出现"计时（轮询 `CGWindowListCopyWindowInfo`），对照最小 AppKit 窗口程序作底价；体积看 `strip -x` 后单架构二进制；剖析用 xctrace Time Profiler——`--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 的旧 Debug 包，要复制 Release 包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`。控件微基准：单独冷进程、上屏 layer 路径、N=1 与 N=10、交替 A/B。
 
-## 性能基线（Release，Apple Silicon，2026-08-22；方法见决策 14）
+## 性能基线（Release，Apple Silicon，2026-08-22；方法见决策 15）
 
 | 指标 | 最小 AppKit 窗口 | Inbox |
 |---|---|---|
@@ -61,9 +62,8 @@ LIKE 约 2.5 µs/行与命中数无关；FTS5 MATCH 只在低命中词上赢，�
 
 ### 发布前必须（用户）
 
-- CloudKit Console 把 Development schema 部署到 Production（Record/Project 两个 Record Type 及索引，含 `Record.conflictOf`）；entitlements 已按配置取值（Release = Production）。
 - 选分发方式（Developer ID 公证 / App Store）并归档。
-- /Applications 形态下人工确认 Launch at Login；用 Release 包跑一次 `--sync-probe`；清理开发容器里的探针记录（App 内 ⌫）。
+- /Applications 形态下人工确认 Launch at Login；删掉同步下来的 `probe-prod-*` 探针记录（App 内 ⌫）。
 - 深色模式下 Universal Input 的玻璃在快照里是纯白平面（`NSGlassEffectView` 由窗口服务器合成，离屏快照画不出来），上屏确认一次。
 
 ### 已知小缺陷

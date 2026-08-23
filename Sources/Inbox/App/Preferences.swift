@@ -15,6 +15,7 @@ enum Preferences {
     private static let lastSyncSucceededAtKey = "com.inbox.lastSyncSucceededAt"
     private static let lastSyncErrorKey = "com.inbox.lastSyncError"
     private static let lastSyncErrorAtKey = "com.inbox.lastSyncErrorAt"
+    private static let lastSyncEnvironmentKey = "com.inbox.lastSyncEnvironment"
     private static let lastScopeProjectIDKey = "com.inbox.lastScopeProjectID"
     private static let collapsedGroupsKey = "com.inbox.collapsedGroups"
     private static let sortOrderKey = "com.inbox.sortOrder"
@@ -37,6 +38,13 @@ enum Preferences {
     /// Written by the sync engine off the main thread (UserDefaults is
     /// thread-safe); read by Settings. Only terminal failures land in
     /// `lastSyncError` — transient errors the engine retries stay quiet.
+    /// CloudKit environment the library was last synced against
+    /// ("development" / "production"); a change triggers a full re-upload.
+    static var lastSyncEnvironment: String? {
+        get { store.string(forKey: lastSyncEnvironmentKey) }
+        set { setOrRemove(newValue, forKey: lastSyncEnvironmentKey) }
+    }
+
     static var lastSyncSucceededAt: Date? {
         get { store.object(forKey: lastSyncSucceededAtKey) as? Date }
         set { setOrRemove(newValue, forKey: lastSyncSucceededAtKey) }

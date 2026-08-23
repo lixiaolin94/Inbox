@@ -637,6 +637,7 @@
 				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ICLOUD_CONTAINER_ENVIRONMENT = Production;
 				INFOPLIST_KEY_CFBundleDisplayName = Inbox;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -646,6 +647,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.Inbox;
 				PRODUCT_NAME = Inbox;
 				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = CLOUDKIT_PRODUCTION;
 				SWIFT_OPTIMIZATION_LEVEL = "-Osize";
 			};
 			name = Release;

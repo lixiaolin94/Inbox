@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 
 /// `--snapshot-dir`: renders the surfaces to PNG for pixel review.
@@ -244,3 +245,4 @@ extension UISmokeRunner {
         + "Utility 栏出现 N conflicts chip，右键菜单提供 Keep This / Keep Other / Keep Both 三个动作；Keep This 把对方移入 Trash，可恢复且无损，"
         + "Keep Both 只清空标记，不新增任何 surface。Review with the team on Thursday and write the numbers into HISTORY."
 }
+#endif

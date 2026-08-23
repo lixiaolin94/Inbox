@@ -277,6 +277,24 @@ final class SyncTrackingTests: XCTestCase {
         XCTAssertNil(try store.recordByID(record.id))
     }
 
+    func testRequeueAllForSyncForgetsServerStateAndQueuesEveryRow() throws {
+        let payload = ConflictMerger.RecordFields(
+            content: "synced", priority: 2, status: 0, projectID: nil,
+            createdAt: 10, updatedAt: 10, resolvedAt: nil, deletedAt: nil
+        )
+        _ = try store.applyFetchedRecord(id: "synced-1", payload: payload, metadata: Data([0x01]))
+        let local = try createSync("local only")
+        XCTAssertNotNil(try store.ckSystemFields(entity: .record, id: "synced-1"))
+
+        try store.requeueAllForSync()
+
+        XCTAssertNil(try store.ckSystemFields(entity: .record, id: "synced-1"))
+        let pending = try store.pendingChanges().filter { $0.entity == .record }
+        XCTAssertEqual(Set(pending.map(\.id)), ["synced-1", local.id])
+        XCTAssertTrue(pending.allSatisfy { $0.changeType == .upsert })
+        XCTAssertEqual(try store.recordByID("synced-1")?.content, "synced", "local rows untouched")
+    }
+
     func testApplyFetchedRecordInsertsNewRow() throws {
         let payload = ConflictMerger.RecordFields(
             content: "from server",

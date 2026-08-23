@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 
 /// Interaction steps: the Create → Search → Priority → Resolve → Inline
@@ -631,3 +632,4 @@ extension UISmokeRunner {
         }
     }
 }
+#endif

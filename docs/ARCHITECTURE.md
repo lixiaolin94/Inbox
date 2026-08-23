@@ -163,7 +163,7 @@ Diagnostics/  UISmokeRunner(+Chrome/+Flows/+Snapshots) · RecordStore+Smoke · S
 
 ## 10. 性能基线与启动路径约定
 
-- 数字见 HISTORY「性能基线」（2026-08-22：冷启动 278 ms vs 平台底价 180 ms；发布二进制 569 KB；搜索 10k 行 ≈ 2 ms）。测量方法在 HISTORY 决策 14。
+- 数字见 HISTORY「性能基线」（2026-08-22：冷启动 278 ms vs 平台底价 180 ms；发布二进制 569 KB；搜索 10k 行 ≈ 2 ms）。测量方法在 HISTORY 决策 15。
 - **启动路径约定**：`applicationDidFinishLaunching` 里第一帧之前只做"打开数据库 → 建控制器 → 建窗口 → 显示"；CloudKit 引擎、状态栏项、离线检测在首帧后 0.25 s 的延迟块里启动（`--sync-probe` 除外）。新增启动工作默认放进延迟块，除非它是第一帧可见的。
 - **诊断代码只在 DEBUG**：`Diagnostics/` 与 `+Smoke.swift` 整体 `#if DEBUG`；Release 里 `--ui-smoke`/`--sync-probe` 只是被解析然后忽略。
 - **缓存约定**：文本测量（`WrappingTextFieldCell`）、着色 symbol（`ScopeChipButton`）、DateFormatter 都是单入口或小字典缓存，键里包含所有影响结果的输入（宽度/字符串/字号、appearance 名）；不要加带淘汰策略的缓存。
