@@ -13,7 +13,8 @@
 | 视觉语言 | `Theme.swift` 单一令牌源、墨色/纸色阶梯、安静选中块、透明覆盖栏 + 边缘溶解、overlay 滚动条；⌘Z 覆盖 Resolve/Move；排序两态切换；去掉 `M` 键 | `ee49489` |
 | 表面与行高 | 底栏图标按钮、Trash 表面与主表面同构、`windowInset`/`contentInset` 分离并定 12；显式行高（根治自动行高的滚动跳行/只长不缩/改宽丢选区）、`scrollRowToVisible` 避开覆盖栏 | `8350d3c` |
 | 光学对齐与收口 | 光学轨按渲染墨迹断言（`Theme.Optical` + `stepOpticalRails`）、SF Symbol 按对齐带绘制、双击编辑、右键 Mark as Resolved、日期跟随 UI 语言、Settings 标题、发布前清扫（死代码、注释、冒烟拆文件）、App 图标接入 | `ea9390d` |
-| 全局唤起 | `⌥Space` 系统级热键（Carbon `RegisterEventHotKey` 零依赖封装，非独占注册）：唤起聚焦 Input / 最前时隐藏回上一应用；Settings 开关即时生效；冒烟断言注册跟随开关 | `1f7115a` |
+| 全局唤起 | `⌥Space` 系统级热键（Carbon `RegisterEventHotKey` 零依赖封装，非独占注册）：唤起聚焦 Input / 最前时隐藏回上一应用；Settings 开关即时生效；冒烟断言注册跟随开关；窗口落在鼠标所在屏幕（`SummonPlacement` 纯逻辑 + 多屏单测） | `1f7115a` `44ea051` |
+| 自动更新与发布流水线 | Sparkle 2（唯一第三方依赖，决策 16）：仅 Xcode 工程、`SUPublicEDKey` 空则不启动、Check for Updates… 菜单；CFBundleVersion 跟随 MARKETING_VERSION；tag 触发 Actions：archive → 云签名导出 → 公证 → staple → `sign_update` → appcast → GitHub Release；`release.sh` 支持 ASC API key 或本地 keychain profile | `3deaea6` |
 
 ## 关键技术决策
 
