@@ -32,6 +32,7 @@
 13. **内存口径**：Activity Monitor「Memory」= `phys_footprint`（`footprint -p <pid>`），不是 RSS。Inbox Release 25 MB（最小 AppKit 窗口 17 MB）。
 14. **视觉语言来源**：tinycast 的 `docs/ui.md` + `Theme.swift` 写法（一段话、一条阶梯、令牌单源、不可变项、溶解参数）；没有采纳它的无边框面板形态与快捷键提示。
 15. **性能测量方法**：启动用"spawn → 首个 layer-0 窗口出现"计时（轮询 `CGWindowListCopyWindowInfo`），对照最小 AppKit 窗口程序作底价；体积看 `strip -x` 后单架构二进制；剖析用 xctrace Time Profiler——`--launch` 按 bundle id 经 LaunchServices 取包，会拿到 DerivedData 的旧 Debug 包，要复制 Release 包改 CFBundleIdentifier 并 `codesign --force --deep --sign -`。控件微基准：单独冷进程、上屏 layer 路径、N=1 与 N=10、交替 A/B。
+16. **Sparkle 2 破例引入（唯一第三方依赖，2026-08-27 用户批准）**：自动更新的安装安全细节（EdDSA 校验、原子替换、App Translocation、quarantine）不适合自研，自研"检查+提示"半自动方案被否。隔离方式：包只挂 project.yml（Xcode 工程），`Package.swift` 不引用，代码 `#if canImport(Sparkle) && !DEBUG`——SPM 秒级回路与 Debug 构建不含 Sparkle；`SUPublicEDKey` 为空时 updater 不启动，密钥就位前的构建保持安静。Feed 用 GitHub Release 的 `releases/latest/download/appcast.xml` 重定向，appcast 只含最新版。
 
 ## 性能基线（Release，Apple Silicon，2026-08-22；方法见决策 15）
 

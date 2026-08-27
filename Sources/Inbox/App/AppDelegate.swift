@@ -1,6 +1,9 @@
 import AppKit
 import CloudKit
 import ServiceManagement
+#if canImport(Sparkle) && !DEBUG
+import Sparkle
+#endif
 
 /// Applies `minSize`/`maxSize` to `setFrame` as well as live user resize.
 /// Stock `NSWindow.constrainFrameRect` only keeps the frame on-screen.
@@ -22,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: NSMenu?
     private var settingsWindowController: SettingsWindowController?
     private var launch = LaunchConfiguration.parse([])
+    #if canImport(Sparkle) && !DEBUG
+    /// Sparkle exists only in the Xcode Release build (the SPM binary has
+    /// no bundle); nil until `startUpdaterIfConfigured` finds a public key.
+    private var updaterController: SPUStandardUpdaterController?
+    #endif
 
     /// The dynamic Project section of the Go menu (PRD §9): rebuilt whenever
     /// the Project list changes, so `⌘2…⌘0` always tracks Manual Order.
@@ -123,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.startSyncEngine()
             self.refreshOfflineNotice()
             self.installStatusItem()
+            self.startUpdaterIfConfigured()
         }
 
         #if DEBUG
@@ -131,6 +140,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
     }
+
+    /// Sparkle (docs/RELEASE.md). Starts only when SUPublicEDKey is filled
+    /// in (project.yml), so builds made before the key pair existed stay
+    /// quiet instead of failing signature checks. No-op in Debug/SPM builds.
+    private func startUpdaterIfConfigured() {
+        #if canImport(Sparkle) && !DEBUG
+        guard !launch.isUISmoke,
+              let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+              !key.isEmpty else { return }
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        #endif
+    }
+
+    #if canImport(Sparkle) && !DEBUG
+    @objc private func checkForUpdates(_ sender: Any?) {
+        updaterController?.checkForUpdates(sender)
+    }
+    #endif
 
     private func startSyncEngine() {
         syncEngine = InboxSyncEngine.makeIfEnabled(
@@ -300,6 +331,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         settingsItem.target = self
         menu.addItem(settingsItem)
+        #if canImport(Sparkle) && !DEBUG
+        let updateItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+        menu.addItem(updateItem)
+        #endif
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Close",
@@ -580,6 +620,11 @@ extension AppDelegate: NSMenuItemValidation {
     /// Checkmarks the Go menu item matching the current Scope. Edit menu
     /// items are left to AppKit's normal responder-chain validation.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        #if canImport(Sparkle) && !DEBUG
+        if menuItem.action == #selector(checkForUpdates(_:)) {
+            return updaterController != nil
+        }
+        #endif
         if menuItem.action == #selector(toggleLaunchAtLogin(_:)) {
             guard canManageLaunchAtLogin else {
                 menuItem.state = .off

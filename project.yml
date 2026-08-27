@@ -5,6 +5,14 @@
 # clone can be opened in Xcode without running XcodeGen first. After
 # changing this file, regenerate and commit both.
 name: Inbox
+packages:
+  # The single third-party dependency (SPEC 铁律的唯一例外，HISTORY 决策 16):
+  # auto-update install security (EdDSA, atomic swap, translocation) is not
+  # something to hand-roll. Xcode builds only — Package.swift stays without
+  # it, so `swift build`/`swift test`/smoke keep the zero-dependency loop.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.7.0"
 options:
   minimumXcodeGenVersion: "2.46"
   deploymentTarget:
@@ -34,7 +42,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
         PRODUCT_NAME: Inbox
         MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: 1
+        # CFBundleVersion mirrors the marketing version — Sparkle compares
+        # sparkle:version against it, so it must move on every release.
+        CURRENT_PROJECT_VERSION: "$(MARKETING_VERSION)"
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         INFOPLIST_KEY_CFBundleDisplayName: Inbox
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
@@ -67,6 +77,15 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: "-Osize"
     # S6: CloudKit record-level sync (CKSyncEngine). aps-environment enables
     # the push notifications CKSyncEngine uses for remote change hints.
+    info:
+      path: Sources/Inbox/Resources/Info.plist
+      properties:
+        # Sparkle feed follows the latest GitHub release (docs/RELEASE.md).
+        # Empty SUPublicEDKey keeps the updater off until the EdDSA key
+        # pair exists — AppDelegate guards on it; paste the public key from
+        # `generate_keys` here to arm updates.
+        SUFeedURL: https://github.com/lixiaolin94/Inbox/releases/latest/download/appcast.xml
+        SUPublicEDKey: ""
     entitlements:
       path: Inbox.entitlements
       properties:
@@ -77,6 +96,7 @@ targets:
     dependencies:
       - sdk: libsqlite3.tbd
       - sdk: CloudKit.framework
+      - package: Sparkle
     scheme:
       testTargets:
         - InboxTests

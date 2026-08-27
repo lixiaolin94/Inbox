@@ -66,6 +66,7 @@
 		B6BDCE0E75F4403F57975A48 /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A673436C79B1E163176EC45E /* SQLiteDatabase.swift */; };
 		B877A5480B1CE96B6A466BEE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D13AF8508B3060A30447D10B /* Theme.swift */; };
 		BA4C2FD7DBB46CDE3B180845 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F362E2A3D3721C4A4332541A /* AppDelegate.swift */; };
+		C044B0A9C937FFD9A1FD9F66 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F69B3E464421C5FD26C5E2A1 /* Sparkle */; };
 		C048A365667DCA811DE22505 /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF32A330494737F18DE30C76 /* RecordStore+Sync.swift */; };
 		C5074DD6E1662A921A7F8D4A /* RecordSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88D0F91DF40EE5EBEB27A4C8 /* RecordSort.swift */; };
 		C651D884DFA88827CF741A95 /* UISmokeRunner+Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30991C74EE7FCB4BC182C7CB /* UISmokeRunner+Snapshots.swift */; };
@@ -148,6 +149,7 @@
 		F4608829EEB2273F7BA10638 /* Record.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Record.swift; sourceTree = "<group>"; };
 		F5A3EB615991EA717D2968F6 /* MainViewController+Smoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MainViewController+Smoke.swift"; sourceTree = "<group>"; };
 		F61F2AE88ED53D03A9A2F1F8 /* ConflictPairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictPairTests.swift; sourceTree = "<group>"; };
+		F92B14D92E3A481A15678FBA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FC4CFAF4529A109F05AAC41A /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -158,6 +160,7 @@
 			files = (
 				3BDFF4D912712B2B9A137664 /* libsqlite3.tbd in Frameworks */,
 				34F89241AC81DD091793A273 /* CloudKit.framework in Frameworks */,
+				C044B0A9C937FFD9A1FD9F66 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,6 +308,7 @@
 			isa = PBXGroup;
 			children = (
 				5D6464BA6310B27B6E49223E /* Assets.xcassets */,
+				F92B14D92E3A481A15678FBA /* Info.plist */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -369,6 +373,7 @@
 			);
 			name = Inbox;
 			packageProductDependencies = (
+				F69B3E464421C5FD26C5E2A1 /* Sparkle */,
 			);
 			productName = Inbox;
 			productReference = 7973723523BC248A64B049CF /* Inbox.app */;
@@ -420,6 +425,9 @@
 			);
 			mainGroup = C04C7D870495A8CB40E3B98E;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				181A02A150B6149811E477BC /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CC7B79A5261FD97678655D31 /* Products */;
 			projectDirPath = "";
@@ -540,8 +548,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				ICLOUD_CONTAINER_ENVIRONMENT = Development;
+				INFOPLIST_FILE = Sources/Inbox/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Inbox;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
@@ -559,6 +568,7 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Sources/Inbox/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.InboxTests;
 				PRODUCT_NAME = InboxTests;
@@ -634,6 +644,7 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Sources/Inbox/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiaolin.InboxTests;
 				PRODUCT_NAME = InboxTests;
@@ -650,9 +661,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Inbox.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ICLOUD_CONTAINER_ENVIRONMENT = Production;
+				INFOPLIST_FILE = Sources/Inbox/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Inbox;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHighResolutionCapable = YES;
@@ -765,6 +777,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		181A02A150B6149811E477BC /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F69B3E464421C5FD26C5E2A1 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 181A02A150B6149811E477BC /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FD6775CE7CD5EA945873FE66 /* Project object */;
 }

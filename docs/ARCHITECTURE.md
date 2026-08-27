@@ -53,7 +53,7 @@ Diagnostics/  UISmokeRunner(+Chrome/+Flows/+Snapshots) · RecordStore+Smoke · S
 |---|---|---|
 | **App/** | | |
 | `main.swift` | 进程入口：`--ui-smoke` / `--sync-probe` 分流，否则启动 AppKit | — |
-| `AppDelegate.swift` | 窗口创建与尺寸约束、主菜单（App/File/Edit/Go）、File 导出入口（JSON / 快照 / Finder 定位）、`⌘Number`、状态栏项、Undo/Redo 路由（field editor 优先于业务撤销栈）、Settings 窗口、同步引擎启停 | 任何 Record/Project 业务 |
+| `AppDelegate.swift` | 窗口创建与尺寸约束、主菜单（App/File/Edit/Go）、File 导出入口（JSON / 快照 / Finder 定位）、`⌘Number`、状态栏项、Undo/Redo 路由（field editor 优先于业务撤销栈）、Settings 窗口、同步引擎启停、⌥Space 唤起策略、Sparkle updater（仅 Release，`SUPublicEDKey` 为空则不启动） | 任何 Record/Project 业务 |
 | `LaunchConfiguration.swift` | 命令行参数解析（冒烟/探针路径、defaults suite、快照目录） | — |
 | `GlobalHotKey.swift` | `⌥Space` 系统级热键：Carbon `RegisterEventHotKey` 的零依赖封装（非独占注册，无需辅助功能权限） | 唤起/隐藏策略（`AppDelegate`） |
 | `SummonPlacement.swift` | 唤起落屏规则（纯逻辑，多屏单测）：窗口不在鼠标所在屏时移到该屏可见区居中，在则不动 | 读屏幕/挪窗口（`AppDelegate`） |
