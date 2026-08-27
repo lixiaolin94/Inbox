@@ -105,6 +105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.window = window
         NSApp.activate(ignoringOtherApps: true)
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateGlobalSummon),
+            name: .inboxGlobalSummonDidChange,
+            object: nil
+        )
+        updateGlobalSummon()
+
         // Off the first-frame path: the CloudKit engine (~36 ms) and the
         // status item (~6 ms) are not needed to show the window. A fixed
         // short delay is simpler and more predictable than hooking the
@@ -152,12 +160,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         presentMainWindow()
     }
 
-    /// Single reopen path used by Dock, ⌘Tab, and the menu-bar item.
+    /// Single reopen path used by Dock, ⌘Tab, the menu-bar item and ⌥Space.
     @objc func presentMainWindow() {
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         mainViewController.focusInputAtEnd()
+    }
+
+    // MARK: - Global summon (⌥Space)
+
+    /// Registration follows the Settings checkbox live — no relaunch.
+    @objc private func updateGlobalSummon() {
+        if Preferences.isGlobalSummonEnabled {
+            GlobalHotKey.register { [weak self] in self?.toggleFromGlobalSummon() }
+        } else {
+            GlobalHotKey.unregister()
+        }
+    }
+
+    /// Summon from anywhere; pressed again while Inbox is frontmost it
+    /// hides the app, handing focus back to the previous one.
+    private func toggleFromGlobalSummon() {
+        if NSApp.isActive, window?.isKeyWindow == true {
+            NSApp.hide(nil)
+        } else {
+            presentMainWindow()
+        }
     }
 
     // MARK: - Menu bar (PRD §13.3)

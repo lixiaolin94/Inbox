@@ -61,6 +61,7 @@ enum UISmokeRunner {
             try stepMultilineRowHeight(window: window, controller: controller)
             try stepWindowReopen(window: window, controller: controller)
             try stepSettings(window: window)
+            try stepGlobalSummon()
             if let directory = LaunchConfiguration.parse(CommandLine.arguments).snapshotDirectory {
                 try stepSnapshots(window: window, controller: controller, store: store, directory: directory)
             }

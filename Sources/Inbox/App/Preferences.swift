@@ -3,6 +3,7 @@ import AppKit
 extension Notification.Name {
     static let inboxAppearanceDidChange = Notification.Name("InboxAppearanceDidChange")
     static let inboxSyncStatusDidChange = Notification.Name("InboxSyncStatusDidChange")
+    static let inboxGlobalSummonDidChange = Notification.Name("InboxGlobalSummonDidChange")
 }
 
 /// Single UserDefaults access point for persisted UI state (last Scope,
@@ -12,6 +13,7 @@ extension Notification.Name {
 /// owns a defaults key.
 enum Preferences {
     static let syncEnabledKey = "com.inbox.syncEnabled"
+    static let globalSummonKey = "com.inbox.globalSummon"
     private static let lastSyncSucceededAtKey = "com.inbox.lastSyncSucceededAt"
     private static let lastSyncErrorKey = "com.inbox.lastSyncError"
     private static let lastSyncErrorAtKey = "com.inbox.lastSyncErrorAt"
@@ -31,6 +33,12 @@ enum Preferences {
     static var isSyncEnabled: Bool {
         if store.object(forKey: syncEnabledKey) == nil { return true }
         return store.bool(forKey: syncEnabledKey)
+    }
+
+    /// ⌥Space system-wide summon (Settings ▸ General). Missing key means on.
+    static var isGlobalSummonEnabled: Bool {
+        if store.object(forKey: globalSummonKey) == nil { return true }
+        return store.bool(forKey: globalSummonKey)
     }
 
     // MARK: - Sync status (PRD §15.2, §15.4)

@@ -285,6 +285,20 @@ extension UISmokeRunner {
         pump()
     }
 
+    /// ⌥Space registration follows the preference live (AppDelegate observes
+    /// the Settings toggle's notification). The hot key press itself cannot
+    /// be synthesized — Carbon only sees real key events — so the smoke
+    /// asserts the wiring on both edges of the toggle.
+    static func stepGlobalSummon() throws {
+        try assertEqual(GlobalHotKey.isRegistered, true, "⌥Space registered at launch (default on)")
+        Preferences.store.set(false, forKey: Preferences.globalSummonKey)
+        NotificationCenter.default.post(name: .inboxGlobalSummonDidChange, object: nil)
+        try assertEqual(GlobalHotKey.isRegistered, false, "⌥Space unregistered after disable")
+        Preferences.store.set(true, forKey: Preferences.globalSummonKey)
+        NotificationCenter.default.post(name: .inboxGlobalSummonDidChange, object: nil)
+        try assertEqual(GlobalHotKey.isRegistered, true, "⌥Space re-registered after enable")
+    }
+
     /// performClose hides (S5 resident window); presentMainWindow restores
     /// the same size and puts the caret back in Universal Input.
     static func stepWindowReopen(window: NSWindow, controller: MainViewController) throws {
