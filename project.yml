@@ -41,7 +41,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
         PRODUCT_NAME: Inbox
-        MARKETING_VERSION: "0.3.0"
+        MARKETING_VERSION: "0.3.1"
         # CFBundleVersion mirrors the marketing version — Sparkle compares
         # sparkle:version against it, so it must move on every release.
         CURRENT_PROJECT_VERSION: "$(MARKETING_VERSION)"
@@ -85,6 +85,9 @@ targets:
         # (private key also in the account holder's login Keychain).
         SUFeedURL: https://github.com/lixiaolin94/Inbox/releases/latest/download/appcast.xml
         SUPublicEDKey: "eaPIgZ2aNcGGEWHZVbVc1rmaP1jKoX4inFv+5k79TpA="
+        # Personal tool: check for updates on schedule without asking first
+        # (skips Sparkle's second-launch consent prompt).
+        SUEnableAutomaticChecks: true
     entitlements:
       path: Inbox.entitlements
       properties:

@@ -63,10 +63,9 @@ LIKE 约 2.5 µs/行与命中数无关；FTS5 MATCH 只在低命中词上赢，�
 
 ## 遗留事项
 
-### 发布前必须（用户）
+### 待用户确认
 
-- 选分发方式（Developer ID 公证 / App Store）并归档。
-- /Applications 形态下人工确认 Launch at Login；删掉同步下来的 `probe-prod-*` 探针记录（App 内 ⌫）。
+- /Applications 形态下人工确认 Launch at Login。
 - 深色模式下 Universal Input 的玻璃在快照里是纯白平面（`NSGlassEffectView` 由窗口服务器合成，离屏快照画不出来），上屏确认一次。
 
 ### 已知小缺陷
