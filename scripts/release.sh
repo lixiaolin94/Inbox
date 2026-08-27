@@ -13,6 +13,7 @@
 #         --apple-id <Apple ID> --team-id YWQ4TY4VR5 --password <app-specific password>
 #     (app-specific password: account.apple.com ▸ Sign-In and Security)
 set -euo pipefail
+setopt null_glob   # fresh CI checkout: build/Inbox-*.zip matches nothing
 cd "$(dirname "$0")/.."
 ARCHIVE=build/Inbox.xcarchive
 EXPORT=build/export
