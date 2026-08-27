@@ -1,24 +1,68 @@
-# 发布准备（v0.3.0）
+# 发布
 
-> 工程侧已就绪；剩余步骤只有账号/设备持有人能做。产品语义以 PRD 为准，新引入的交互在 HISTORY「产品待定」等评审。
+分发方式：Developer ID 直发 + 公证（不上 App Store）+ Sparkle 应用内更新。
+构建、签名、公证、发布全部由 GitHub Actions 完成（`.github/workflows/release.yml`）。
 
-## 已完成
+## 日常发版（三步）
 
-- Release 配置使用 Production 容器环境（entitlements 按配置取值：`$(ICLOUD_CONTAINER_ENVIRONMENT)` / `$(APS_ENVIRONMENT)`；`aps-environment` 由 provisioning profile 决定，归档用分发 profile 时为 production）。
-- File ▸ Export as JSON… / Export Database Snapshot…（`VACUUM INTO`）/ Show Data in Finder。
-- Settings 显示上次成功同步时间与最近错误（只读）。
-- 搜索规模复查：100k 行 LIKE p95 ≤ 40 ms，保留 LIKE（HISTORY 性能基线）。
-- 冲突中心：schema v4 `conflict_of` 随 CloudKit 同步，行内弱化 Conflict 标记 + 底栏 "N conflicts" 过滤 chip + 右键 Resolve Conflict ▸ Keep This / Keep Other / Keep Both（无损：放弃方进 Trash）。
-- `--ui-smoke --snapshot-dir` 像素快照；Accessibility 平台默认 + 自定义控件的 label/role/value；版本 0.3.0。
-- 2026-08-23：Production schema 已部署（Record 15 字段含 `conflictOf`——Console 里手动补的，CloudKit 只在首次写非空值时建字段；Project 10 字段；索引与安全角色）。环境切换重传已实现并在真实库上完成（12 条记录 + 3 个 Project 重新上传，`lastSyncEnvironment = production`）。Production 双库 `--sync-probe` 通过。
-- App 图标：`Sources/Inbox/Resources/Assets.xcassets/AppIcon.appiconset`（用户的 iconset，16–512 @1x/@2x），`ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon`；构建产物含 `AppIcon.icns` + `Assets.car`。
+1. `project.yml` 改 `MARKETING_VERSION`（`CURRENT_PROJECT_VERSION` 跟随它，Sparkle 版本比较依赖这一点），`xcodegen generate`，提交合并到 main；
+2. `git tag v<版本>`（必须与 MARKETING_VERSION 一致，workflow 会校验）；
+3. `git push origin v<版本>`。
 
-## 发布清单
+Actions 随后：archive → Developer ID 云签名导出 → notarize → staple →
+`Inbox-<版本>.zip` → `sign_update` 签名 → `appcast.xml` → GitHub Release。
+应用内 Sparkle 读 `releases/latest/download/appcast.xml`（永远指向最新
+Release 的 appcast，无需维护历史条目），用户经 Check for Updates… 或自动
+检查拿到更新。
 
-| 步骤 | 谁 |
-|---|---|
-| 分发方式已定：Developer ID 直发 + 公证（不上 App Store）。Release 已开 Hardened Runtime；`scripts/release.sh` 做 archive → Developer ID 导出（Xcode 云端签名，无需本地证书，已验证）→ 公证 → staple → `build/Inbox-<版本>.zip` | 协调者 |
-| 公证凭据（一次性）：`xcrun notarytool store-credentials inbox-notary --apple-id <Apple ID> --team-id YWQ4TY4VR5 --password <app 专用密码>`；之后跑 `scripts/release.sh` | **用户**存凭据 |
-| /Applications 形态下人工确认 Launch at Login 注册 | 用户 |
-| 对 Production 跑 `--sync-probe`：Release 包没有诊断代码，要用 Debug 配置钉到 Production 的构建：`xcodebuild -configuration Debug -derivedDataPath /tmp/inbox-dd-prod ICLOUD_CONTAINER_ENVIRONMENT=Production 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CLOUDKIT_PRODUCTION' build` | 协调者（已通过一次） |
-| 清理探针记录：Production 里有一条 `probe-prod-<时间戳>`（已同步进本地库，App 内 ⌫ 删除即可）；Development 容器可整体忽略 | 用户 |
+## 一次性密钥设置（只有账号持有人能做；私钥一律不进仓库）
+
+1. **Sparkle EdDSA 密钥对**：
+
+   ```bash
+   curl -fsSL https://github.com/sparkle-project/Sparkle/releases/download/2.9.6/Sparkle-2.9.6.tar.xz | tar -xJ -C /tmp/sparkle-tools
+   /tmp/sparkle-tools/bin/generate_keys
+   ```
+
+   私钥存入登录 Keychain；打印出的**公钥**贴进 `project.yml` 的
+   `SUPublicEDKey`（公钥可提交），`xcodegen generate` 后提交。
+   导出私钥给 CI（用完即删本地文件）：
+
+   ```bash
+   /tmp/sparkle-tools/bin/generate_keys -x /tmp/sparkle_ed_key && gh secret set SPARKLE_ED_PRIVATE_KEY < /tmp/sparkle_ed_key && rm /tmp/sparkle_ed_key
+   ```
+
+2. **App Store Connect API Key**（云签名 + 公证共用一把）：
+   App Store Connect ▸ 用户和访问 ▸ 集成 ▸ App Store Connect API ▸
+   团队密钥 ▸ 生成（角色 **Admin**）。记下 Key ID 与 Issuer ID，下载
+   `.p8`（只能下载一次）。然后：
+
+   ```bash
+   gh secret set ASC_KEY_ID --body '<Key ID>'
+   ```
+
+   ```bash
+   gh secret set ASC_ISSUER_ID --body '<Issuer ID>'
+   ```
+
+   ```bash
+   gh secret set ASC_KEY_P8 < ~/Downloads/AuthKey_<Key ID>.p8
+   ```
+
+3. 密钥就位后由协调者发首个正式版本；**第一个带 Sparkle 的构建需手动安装
+   一次**（现装的 0.3.0 没有 updater），之后全走应用内更新。
+
+## 本地发版（备用路径）
+
+CI 不可用时：`scripts/release.sh`（公证走 keychain profile `inbox-notary`，
+创建命令见脚本头注释）→ `SPARKLE_ED_PRIVATE_KEY=<私钥> scripts/make_appcast.sh`
+→ `gh release create v<版本> build/Inbox-*.zip build/appcast.xml`。
+
+## 遗留核对
+
+- 对 Production 跑 `--sync-probe`：Release 包没有诊断代码，用 Debug 配置钉到
+  Production 的构建：`xcodebuild -configuration Debug -derivedDataPath
+  /tmp/inbox-dd-prod ICLOUD_CONTAINER_ENVIRONMENT=Production
+  'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CLOUDKIT_PRODUCTION' build`（已通过一次）。
+- 用户：删除库里的 `probe-prod-<时间戳>` 探针记录（App 内 ⌫）；/Applications
+  形态下确认 Launch at Login。
