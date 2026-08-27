@@ -41,7 +41,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xiaolin.Inbox
         PRODUCT_NAME: Inbox
-        MARKETING_VERSION: "0.3.1"
+        MARKETING_VERSION: "0.3.2"
         # CFBundleVersion mirrors the marketing version — Sparkle compares
         # sparkle:version against it, so it must move on every release.
         CURRENT_PROJECT_VERSION: "$(MARKETING_VERSION)"

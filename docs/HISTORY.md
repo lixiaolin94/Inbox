@@ -14,7 +14,8 @@
 | 表面与行高 | 底栏图标按钮、Trash 表面与主表面同构、`windowInset`/`contentInset` 分离并定 12；显式行高（根治自动行高的滚动跳行/只长不缩/改宽丢选区）、`scrollRowToVisible` 避开覆盖栏 | `8350d3c` |
 | 光学对齐与收口 | 光学轨按渲染墨迹断言（`Theme.Optical` + `stepOpticalRails`）、SF Symbol 按对齐带绘制、双击编辑、右键 Mark as Resolved、日期跟随 UI 语言、Settings 标题、发布前清扫（死代码、注释、冒烟拆文件）、App 图标接入 | `ea9390d` |
 | 全局唤起 | `⌥Space` 系统级热键（Carbon `RegisterEventHotKey` 零依赖封装，非独占注册）：唤起聚焦 Input / 最前时隐藏回上一应用；Settings 开关即时生效；冒烟断言注册跟随开关；窗口落在鼠标所在屏幕（`SummonPlacement` 纯逻辑 + 多屏单测） | `1f7115a` `44ea051` |
-| 自动更新与发布流水线 | Sparkle 2（唯一第三方依赖，决策 16）：仅 Xcode 工程、`SUPublicEDKey` 空则不启动、Check for Updates… 菜单；CFBundleVersion 跟随 MARKETING_VERSION；tag 触发 Actions：archive → 云签名导出 → 公证 → staple → `sign_update` → appcast → GitHub Release；`release.sh` 支持 ASC API key 或本地 keychain profile | `3deaea6` |
+| 自动更新与发布流水线 | Sparkle 2（唯一第三方依赖，决策 16）：仅 Xcode 工程、`SUPublicEDKey` 空则不启动、Check for Updates… 菜单；CFBundleVersion 跟随 MARKETING_VERSION；tag 触发 Actions：archive → 导出 → 公证 → staple → `sign_update` → appcast → GitHub Release；云管理 Developer ID 证书仅限 Account Holder 交互会话（Admin API key 实测被拒），CI 改经典证书手动签名（p12 secrets + 仓库内 profile，证书 2027-02 到期）；v0.3.0/0.3.1 均全自动发布验证 | `3deaea6` |
+| 玻璃视觉语言（v0.3.2） | 暗色唯一 scheme（`NSApp.appearance` 钉 darkAqua）；整窗 `NSGlassEffectView(.clear)` + smoothstep 采样暗色 scrim（easing-gradient 手法）；窗口圆角 28（窗体透明、形状由根玻璃层决定）；胶囊 Input（clear 玻璃）；主/Trash 左下玻璃胶囊 ButtonGroup（`.grouped` chip：无底 + hover 圆底，黑 0.4 tint）；底部溶解带移除（玻璃负责区隔）；unified toolbar 使红绿灯内缩，Input/Trash 头部改锚窗顶固定值。**门禁债务见遗留事项** | `b612a3e` |
 
 ## 关键技术决策
 
@@ -62,6 +63,17 @@
 LIKE 约 2.5 µs/行与命中数无关；FTS5 MATCH 只在低命中词上赢，且不能服务 1–2 字中文查询。保留 LIKE。
 
 ## 遗留事项
+
+### 玻璃视觉语言的未清债务（v0.3.2 合并时用户拍板跳过门禁，须尽快补）
+
+- **UISmokeRunner 断言未跟上新视觉**：`--ui-smoke` 当前 FAIL（第一条就是
+  content view 类型断言）。待按新形态重写：根视图 NSGlassEffectView(.clear)
+  + 28pt 圆角、scrim、Input 顶部固定 48、玻璃 ButtonGroup 几何、Trash 头部
+  44 / 标题线 26、强制暗色下的墨迹测量。补完前 main 的冒烟门禁失效。
+- 实验期常量散在视图代码里（scrim 锚点、窗圆角 28、48/44/26 偏移、组内边
+  距、tint 0.4），待收进 `Theme` 令牌；"实验（未提交）"注释待清理。
+- docs/ui.md 未更新：暗色唯一 scheme、clear 玻璃 + scrim、玻璃 ButtonGroup、
+  底部溶解带移除（玻璃负责区隔）、unified toolbar 红绿灯内缩。
 
 ### 待用户确认
 
