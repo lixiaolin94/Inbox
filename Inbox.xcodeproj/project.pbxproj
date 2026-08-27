@@ -33,11 +33,13 @@
 		510C9ABEA00CECD9E1636693 /* RecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 286814A8C91E939203729692 /* RecordStore.swift */; };
 		55C81C0A4420631EDB1C0B4E /* SyncProbeRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F54664DE538789BBE0A6E8 /* SyncProbeRunner.swift */; };
 		5603C041EBD54D75BAB948CB /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */; };
+		560D0A427655A2374A1EF7C9 /* SummonPlacementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCD0B0F46B46FB3C98EF6CC /* SummonPlacementTests.swift */; };
 		5FA5B95E693648E4975C3985 /* RecordStore+Smoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5225B709D6B760D8D584A25 /* RecordStore+Smoke.swift */; };
 		60AFC1879EFE3934DE5D3BD3 /* ConflictPairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61F2AE88ED53D03A9A2F1F8 /* ConflictPairTests.swift */; };
 		632FA35B5C0BCC7F18966D88 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3383027E79276D888E3C978 /* Project.swift */; };
 		65628214696FAE099B3E0D5D /* SyncTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9104E1DFEB40B49C961F5DDF /* SyncTypes.swift */; };
 		66C09C336C5B3EDA5E8FE704 /* ListRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 597618AABCEE8C89CD4631F7 /* ListRowTests.swift */; };
+		765E4EDD4AC35FDC2A1CE9FD /* SummonPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FE11A6933DF7F77C2AEA6D /* SummonPlacement.swift */; };
 		774A843A6C25CB2636454F6D /* RecordStore+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF32A330494737F18DE30C76 /* RecordStore+Sync.swift */; };
 		7764D74123E2695D0366E8AE /* ScopeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B540CE6DA05F17E7A0874D /* ScopeBarView.swift */; };
 		7F6D779814126229B6590A77 /* UISmokeRunner+Flows.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC42ADAC46E736972FACCDA /* UISmokeRunner+Flows.swift */; };
@@ -74,6 +76,7 @@
 		D1936DE5EA5511DF9E335550 /* RowFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89370A8F8BA81F4F6366F1E1 /* RowFocus.swift */; };
 		D3D0D657F233B8A51D5482FB /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2521A60513E857C5E36BCA2 /* Preferences.swift */; };
 		D61CBB503244968CA31944C0 /* CKRecordMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85654742AB225ACDF82FC11F /* CKRecordMapping.swift */; };
+		DE74689E6B63090C91B8DD87 /* SummonPlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FE11A6933DF7F77C2AEA6D /* SummonPlacement.swift */; };
 		E1CAE186AFF7B5859B5CD6C5 /* TrashViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66B9954F57B92F39B8C767E7 /* TrashViewController.swift */; };
 		E1F5D2009EA149F75669A4A8 /* LaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6D0B1FA4E6B2EB39D1A1A6 /* LaunchConfiguration.swift */; };
 		E5BE16C836949496C63E5811 /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A673436C79B1E163176EC45E /* SQLiteDatabase.swift */; };
@@ -101,6 +104,7 @@
 		410934E4F6823C0EBE0F6266 /* Dialogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dialogs.swift; sourceTree = "<group>"; };
 		4D2BEB631BAA5C4D1E8CAA36 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		503C6D41D389DC2D92F8E10E /* GroupHeaderCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupHeaderCellView.swift; sourceTree = "<group>"; };
+		58FE11A6933DF7F77C2AEA6D /* SummonPlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummonPlacement.swift; sourceTree = "<group>"; };
 		597618AABCEE8C89CD4631F7 /* ListRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRowTests.swift; sourceTree = "<group>"; };
 		5D6464BA6310B27B6E49223E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5EEF2D7552C1D71EEFA07946 /* UISmokeRunner+Chrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UISmokeRunner+Chrome.swift"; sourceTree = "<group>"; };
@@ -113,6 +117,7 @@
 		85654742AB225ACDF82FC11F /* CKRecordMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CKRecordMapping.swift; sourceTree = "<group>"; };
 		88D0F91DF40EE5EBEB27A4C8 /* RecordSort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordSort.swift; sourceTree = "<group>"; };
 		89370A8F8BA81F4F6366F1E1 /* RowFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowFocus.swift; sourceTree = "<group>"; };
+		8DCD0B0F46B46FB3C98EF6CC /* SummonPlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummonPlacementTests.swift; sourceTree = "<group>"; };
 		8FF8A1C134414E8A0DA50FFC /* MainViewController+Projects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MainViewController+Projects.swift"; sourceTree = "<group>"; };
 		9104E1DFEB40B49C961F5DDF /* SyncTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTypes.swift; sourceTree = "<group>"; };
 		96B64074B7F7A7E08B4AB652 /* RecordCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordCellView.swift; sourceTree = "<group>"; };
@@ -208,6 +213,7 @@
 				C29EC51B7A8B31104FFB2A34 /* main.swift */,
 				F2521A60513E857C5E36BCA2 /* Preferences.swift */,
 				FC4CFAF4529A109F05AAC41A /* SettingsViewController.swift */,
+				58FE11A6933DF7F77C2AEA6D /* SummonPlacement.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -240,6 +246,7 @@
 				3E006D84F28D1E4C5AA9AE86 /* ProjectStoreTests.swift */,
 				EC7F047492510E3A2AE451EF /* RecordSortTests.swift */,
 				6563AB9338276A08F872B2DE /* RecordStoreTests.swift */,
+				8DCD0B0F46B46FB3C98EF6CC /* SummonPlacementTests.swift */,
 				250C94AC93638AC5DC76AFF9 /* SyncTrackingTests.swift */,
 			);
 			path = InboxTests;
@@ -472,6 +479,7 @@
 				7764D74123E2695D0366E8AE /* ScopeBarView.swift in Sources */,
 				2DF4747B199A37D6D6B2CCAB /* ScopeChipButton.swift in Sources */,
 				F2F4E2A0350950F2E09CA56B /* SettingsViewController.swift in Sources */,
+				765E4EDD4AC35FDC2A1CE9FD /* SummonPlacement.swift in Sources */,
 				29C9DBE3E65A187FA70EB900 /* SyncEngine.swift in Sources */,
 				55C81C0A4420631EDB1C0B4E /* SyncProbeRunner.swift in Sources */,
 				8A8E51B8B6B2A59C19D041A4 /* SyncTypes.swift in Sources */,
@@ -515,6 +523,8 @@
 				A9D5732BC4ADD88C7AB80097 /* RowFocus.swift in Sources */,
 				B6BDCE0E75F4403F57975A48 /* SQLiteDatabase.swift in Sources */,
 				36F2F96C720322986A9C0065 /* Scope.swift in Sources */,
+				DE74689E6B63090C91B8DD87 /* SummonPlacement.swift in Sources */,
+				560D0A427655A2374A1EF7C9 /* SummonPlacementTests.swift in Sources */,
 				B1A2647E208B58FC159A6256 /* SyncTrackingTests.swift in Sources */,
 				65628214696FAE099B3E0D5D /* SyncTypes.swift in Sources */,
 			);
