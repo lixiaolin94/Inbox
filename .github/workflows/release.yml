@@ -5,7 +5,10 @@
 #
 # Required repository secrets:
 #   ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8  — App Store Connect API key
-#     (Admin role; .p8 content verbatim). Feeds cloud signing + notarytool.
+#     (Admin role; .p8 content verbatim). Development signing + notarytool.
+#   MAC_CERT_P12 / MAC_CERT_PASSWORD — classic Developer ID Application
+#     certificate (base64 .p12 + its password). Cloud-managed Developer ID
+#     certs are Account-Holder-only, unusable headless.
 #   SPARKLE_ED_PRIVATE_KEY — EdDSA private key from `generate_keys -x`.
 name: release
 on:
@@ -29,6 +32,22 @@ jobs:
           XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
           if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
           xcodebuild -version
+
+      - name: Import Developer ID certificate
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p ci "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p ci "$KEYCHAIN"
+          printf '%s' "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security find-identity -v -p codesigning "$KEYCHAIN"
 
       - name: Build, notarize, staple
         env:

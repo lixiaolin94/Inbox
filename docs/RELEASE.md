@@ -32,7 +32,16 @@ Release 的 appcast，无需维护历史条目），用户经 Check for Updates�
    /tmp/sparkle-tools/bin/generate_keys -x /tmp/sparkle_ed_key && gh secret set SPARKLE_ED_PRIVATE_KEY < /tmp/sparkle_ed_key && rm /tmp/sparkle_ed_key
    ```
 
-2. **App Store Connect API Key**（云签名 + 公证共用一把）：
+1b. **经典 Developer ID 证书**（已完成 2026-08-27）：云管理的 Developer ID
+   证书只认 Account Holder 的交互式会话，无头 CI 用不了（Admin API key 实测
+   被拒），所以 CI 用经典证书手动签名：Xcode ▸ Manage Certificates 创建
+   Developer ID Application → 钥匙串导出 `.p12` → secrets `MAC_CERT_P12`
+   （base64）与 `MAC_CERT_PASSWORD`；配套 profile
+   `scripts/InboxDeveloperID.provisionprofile`（经 ASC API 创建，绑定该证书 +
+   iCloud/APS Production，profile 非机密、随仓库走）。证书 2027-02 过期时：
+   重建证书 → 重导 `.p12` 更新两个 secret → 重建 profile 替换仓库文件。
+
+2. **App Store Connect API Key**（Development 签名 + 公证）：
    App Store Connect ▸ 用户和访问 ▸ 集成 ▸ App Store Connect API ▸
    团队密钥 ▸ 生成（角色 **Admin**）。记下 Key ID 与 Issuer ID，下载
    `.p8`（只能下载一次）。然后：
