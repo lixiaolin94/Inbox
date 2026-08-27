@@ -13,6 +13,7 @@
 		0D2796A7A0F992C8BD57CB47 /* MainViewController+Smoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A3EB615991EA717D2968F6 /* MainViewController+Smoke.swift */; };
 		164A5A279C2E504DD981CA1D /* ConflictMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA8C81D0D62C95201107E1 /* ConflictMerger.swift */; };
 		16D3A52A8346F2EF2C16E4F4 /* RecordSortTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7F047492510E3A2AE451EF /* RecordSortTests.swift */; };
+		1B74E39C89ED925E0CD7638E /* GlobalHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E86030859BAA848400EDBDFA /* GlobalHotKey.swift */; };
 		1D20663C0730572F57374F96 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2521A60513E857C5E36BCA2 /* Preferences.swift */; };
 		1DFB72A44A2AD3A923CD682C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D6464BA6310B27B6E49223E /* Assets.xcassets */; };
 		28B9DB4528B80ABB451E8561 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8445DA507D5E903F24BACE /* ProjectStore.swift */; };
@@ -133,6 +134,7 @@
 		D13AF8508B3060A30447D10B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E309569B184275B649A98C9E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		E82484CBE145A018A7D46247 /* ListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListRow.swift; sourceTree = "<group>"; };
+		E86030859BAA848400EDBDFA /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 		EAF9E6BC5CF5B55501C96CC5 /* ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportTests.swift; sourceTree = "<group>"; };
 		EC7F047492510E3A2AE451EF /* RecordSortTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordSortTests.swift; sourceTree = "<group>"; };
 		F2521A60513E857C5E36BCA2 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				F362E2A3D3721C4A4332541A /* AppDelegate.swift */,
+				E86030859BAA848400EDBDFA /* GlobalHotKey.swift */,
 				BE6D0B1FA4E6B2EB39D1A1A6 /* LaunchConfiguration.swift */,
 				C29EC51B7A8B31104FFB2A34 /* main.swift */,
 				F2521A60513E857C5E36BCA2 /* Preferences.swift */,
@@ -444,6 +447,7 @@
 				86BC9A5365B24DE8218174C4 /* EdgeDissolve.swift in Sources */,
 				A2112DEBA70A964ED70864EE /* Export.swift in Sources */,
 				946369A1639B805C8CA31980 /* GlassCapsuleView.swift in Sources */,
+				1B74E39C89ED925E0CD7638E /* GlobalHotKey.swift in Sources */,
 				AF0CB9C2BDC2EBC863DA4419 /* GroupHeaderCellView.swift in Sources */,
 				A79A7EFEE7C917BCA4D60139 /* LaunchConfiguration.swift in Sources */,
 				CF9F9E551E7A4DAED3FE94FC /* ListRow.swift in Sources */,

@@ -10,7 +10,7 @@ final class SettingsWindowController: NSWindowController {
         // window draws its own, centred in the titlebar zone (same as the
         // Trash surface), with the titlebar kept as chrome.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 228),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 252),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -20,13 +20,14 @@ final class SettingsWindowController: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.contentViewController = controller
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 420, height: 228))
+        window.setContentSize(NSSize(width: 420, height: 252))
         self.init(window: window)
     }
 }
 
 final class SettingsViewController: NSViewController {
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "Launch at Login", target: nil, action: nil)
+    private let summonCheckbox = NSButton(checkboxWithTitle: "Summon with ⌥ Space", target: nil, action: nil)
     private let syncCheckbox = NSButton(checkboxWithTitle: "iCloud Sync", target: nil, action: nil)
     private let syncNoteLabel = NSTextField(wrappingLabelWithString: "Turning iCloud Sync on or off takes effect the next time Inbox launches.")
     private let syncStatusLabel = NSTextField(wrappingLabelWithString: "")
@@ -38,7 +39,7 @@ final class SettingsViewController: NSViewController {
     }()
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 228))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 252))
     }
 
     override func viewDidLoad() {
@@ -70,6 +71,11 @@ final class SettingsViewController: NSViewController {
         launchAtLoginCheckbox.action = #selector(launchAtLoginToggled)
         launchAtLoginCheckbox.translatesAutoresizingMaskIntoConstraints = false
 
+        summonCheckbox.font = .systemFont(ofSize: 13)
+        summonCheckbox.target = self
+        summonCheckbox.action = #selector(summonToggled)
+        summonCheckbox.translatesAutoresizingMaskIntoConstraints = false
+
         syncCheckbox.font = .systemFont(ofSize: 13)
         syncCheckbox.target = self
         syncCheckbox.action = #selector(syncToggled)
@@ -85,7 +91,7 @@ final class SettingsViewController: NSViewController {
         syncStatusLabel.lineBreakMode = .byTruncatingTail
         syncStatusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        for subview in [generalTitle, launchAtLoginCheckbox, syncCheckbox, syncNoteLabel, syncStatusLabel] {
+        for subview in [generalTitle, launchAtLoginCheckbox, summonCheckbox, syncCheckbox, syncNoteLabel, syncStatusLabel] {
             view.addSubview(subview)
         }
 
@@ -112,7 +118,10 @@ final class SettingsViewController: NSViewController {
             launchAtLoginCheckbox.topAnchor.constraint(equalTo: generalTitle.bottomAnchor, constant: 12),
             launchAtLoginCheckbox.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 
-            syncCheckbox.topAnchor.constraint(equalTo: launchAtLoginCheckbox.bottomAnchor, constant: 8),
+            summonCheckbox.topAnchor.constraint(equalTo: launchAtLoginCheckbox.bottomAnchor, constant: 8),
+            summonCheckbox.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+
+            syncCheckbox.topAnchor.constraint(equalTo: summonCheckbox.bottomAnchor, constant: 8),
             syncCheckbox.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 
             syncNoteLabel.topAnchor.constraint(equalTo: syncCheckbox.bottomAnchor, constant: 4),
@@ -141,6 +150,8 @@ final class SettingsViewController: NSViewController {
         } else {
             launchAtLoginCheckbox.state = .off
         }
+
+        summonCheckbox.state = Preferences.isGlobalSummonEnabled ? .on : .off
 
         syncCheckbox.isEnabled = InboxSyncEngine.hasCloudKitContainerEntitlement()
         syncCheckbox.state = Preferences.isSyncEnabled ? .on : .off
@@ -191,6 +202,13 @@ final class SettingsViewController: NSViewController {
             alert.runModal()
         }
         refresh()
+    }
+
+    /// Takes effect immediately: AppDelegate observes the notification and
+    /// (un)registers the hot key.
+    @objc private func summonToggled(_ sender: NSButton) {
+        Preferences.store.set(sender.state == .on, forKey: Preferences.globalSummonKey)
+        NotificationCenter.default.post(name: .inboxGlobalSummonDidChange, object: nil)
     }
 
     @objc private func syncToggled(_ sender: NSButton) {
