@@ -33,7 +33,7 @@ Inbox 是一个只做一件事的 macOS 工具：用键盘把 Record 记下来�
 目录与分层一一对应（`Sources/Inbox/`）：
 
 ```
-App/          main · AppDelegate · LaunchConfiguration · Preferences · SettingsViewController
+App/          main · AppDelegate · GlobalHotKey · LaunchConfiguration · Preferences · SettingsViewController
 Surfaces/     MainViewController(+Records/+Projects/+Smoke) · TrashViewController · Dialogs
 Views/        UniversalInputView · ScopeBarView · ScopeChipButton · RecordTableView · RecordCellView
               GroupHeaderCellView · GlassCapsuleView · RecordDragTypes
@@ -55,8 +55,9 @@ Diagnostics/  UISmokeRunner(+Chrome/+Flows/+Snapshots) · RecordStore+Smoke · S
 | `main.swift` | 进程入口：`--ui-smoke` / `--sync-probe` 分流，否则启动 AppKit | — |
 | `AppDelegate.swift` | 窗口创建与尺寸约束、主菜单（App/File/Edit/Go）、File 导出入口（JSON / 快照 / Finder 定位）、`⌘Number`、状态栏项、Undo/Redo 路由（field editor 优先于业务撤销栈）、Settings 窗口、同步引擎启停 | 任何 Record/Project 业务 |
 | `LaunchConfiguration.swift` | 命令行参数解析（冒烟/探针路径、defaults suite、快照目录） | — |
-| `Preferences.swift` | UserDefaults suite 切换；lastScope / collapsedGroups / sortOrder / showResolved / syncEnabled / lastSync*；行字号与行高常量（逻辑测试也用） | 视觉令牌（`Theme`） |
-| `SettingsViewController.swift` | Inbox Settings 窗口：Launch at Login、iCloud Sync、只读同步状态；自绘居中标题 | 同步逻辑 |
+| `GlobalHotKey.swift` | `⌥Space` 系统级热键：Carbon `RegisterEventHotKey` 的零依赖封装（非独占注册，无需辅助功能权限） | 唤起/隐藏策略（`AppDelegate`） |
+| `Preferences.swift` | UserDefaults suite 切换；lastScope / collapsedGroups / sortOrder / showResolved / syncEnabled / globalSummon / lastSync*；行字号与行高常量（逻辑测试也用） | 视觉令牌（`Theme`） |
+| `SettingsViewController.swift` | Inbox Settings 窗口：Launch at Login、⌥Space 唤起、iCloud Sync、只读同步状态；自绘居中标题 | 同步逻辑 |
 | **Model/** | | |
 | `Record.swift` / `Project.swift` | 纯数据结构与 `Priority` / `RecordStatus` 枚举 | 持久化 |
 | `Scope.swift` | All / Project 作用域枚举 | — |

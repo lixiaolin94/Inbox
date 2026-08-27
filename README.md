@@ -14,7 +14,7 @@ Inbox 用一个统一的 `Record` 概念覆盖 Todo、Issue、Bug、Observation�
 - **Project Scope**：横向 Scope Bar（`All | Project… | +`），All View 按 Inbox → Project Manual Order 分组并可折叠；Scope 同时决定搜索范围和新建 Record 的归属。
 - **排序与 Show Resolved**：排序 chip 在 Newest ⇄ Priority 之间一键切换（无菜单）；Resolved 眼睛开关关闭时 Resolved 立即从列表消失，开启时排在各组 Open 之后（划线样式区分，无标题行）。
 - **Trash**：软删除 + `⌘Z` 撤销；独立 Secondary Surface 提供 Restore 和高成本、明确确认的 Permanent Delete。
-- **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏图标左键 / `⌘Tab` 重新激活时 Universal Input 立即获得焦点，首键不丢失；菜单栏图标右键出菜单；可选 Launch at Login。
+- **菜单栏常驻**：关闭主窗口不退出进程，Dock / 菜单栏图标左键 / `⌘Tab` / `⌥Space`（系统全局，可在 Settings 关闭）重新激活时 Universal Input 立即获得焦点，首键不丢失；菜单栏图标右键出菜单；可选 Launch at Login。
 - **Local-first SQLite**：每台设备一份本地 SQLite，所有高频操作先落盘、UI 立即反馈，再异步同步；无网络时功能完整可用。
 - **同步冲突**：同一条 Record 两端同时改了内容时保留双方，并在行上显示弱化的 Conflict 标记，底栏出现 "N conflicts" chip 可把列表过滤到冲突对；右键 Resolve Conflict ▸ Keep This / Keep Other / Keep Both，被放弃的一方进入 Trash，可恢复。
 
@@ -67,11 +67,12 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | 全局 | `⌘Z` / `⌘⇧Z` | 撤销 / 重做 Resolve·Reopen、Move（改 Project）、Move to Trash |
 | 全局 | `⌘1` | 切到 All |
 | 全局 | `⌘2`…`⌘0` | 按 Project Manual Order 切到对应 Project（第 1–9 个；更多需用 Scope Bar 或鼠标） |
-| 全局 | `⌘,` | 打开 Settings（Launch at Login、iCloud Sync） |
+| 全局 | `⌘,` | 打开 Settings（Launch at Login、⌥Space 唤起、iCloud Sync） |
+| 系统全局 | `⌥Space` | 从任意应用唤起 Inbox 并聚焦 Universal Input；Inbox 已在最前时隐藏并回到上一个应用（可在 Settings 关闭） |
 | 全局 | `⌘W` | 隐藏主窗口（进程继续驻留，不是关闭应用） |
 | 全局 | `⌘Q` | 退出应用 |
 
-对应实现：[`RecordTableView.swift`](Sources/Inbox/Views/RecordTableView.swift)（Row Focus 状态机）、[`MainViewController.swift`](Sources/Inbox/Surfaces/MainViewController.swift)（Input 与焦点路由）、[`MainViewController+Records.swift`](Sources/Inbox/Surfaces/MainViewController+Records.swift)（每个按键对应的 Record 动作）、[`AppDelegate.swift`](Sources/Inbox/App/AppDelegate.swift)（菜单与 `⌘Number`）。
+对应实现：[`RecordTableView.swift`](Sources/Inbox/Views/RecordTableView.swift)（Row Focus 状态机）、[`MainViewController.swift`](Sources/Inbox/Surfaces/MainViewController.swift)（Input 与焦点路由）、[`MainViewController+Records.swift`](Sources/Inbox/Surfaces/MainViewController+Records.swift)（每个按键对应的 Record 动作）、[`AppDelegate.swift`](Sources/Inbox/App/AppDelegate.swift)（菜单与 `⌘Number`）、[`GlobalHotKey.swift`](Sources/Inbox/App/GlobalHotKey.swift)（`⌥Space` 系统级注册）。
 
 ## 数据与开放性
 
