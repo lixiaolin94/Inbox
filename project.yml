@@ -92,6 +92,7 @@ targets:
         includes:
           - App/LaunchConfiguration.swift
           - App/Preferences.swift
+          - App/SummonPlacement.swift
           - Model/Record.swift
           - Model/Project.swift
           - Model/Scope.swift

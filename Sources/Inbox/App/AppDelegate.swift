@@ -180,13 +180,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Summon from anywhere; pressed again while Inbox is frontmost it
-    /// hides the app, handing focus back to the previous one.
+    /// hides the app, handing focus back to the previous one. The window
+    /// lands on the screen the mouse is on (`SummonPlacement`).
     private func toggleFromGlobalSummon() {
         if NSApp.isActive, window?.isKeyWindow == true {
             NSApp.hide(nil)
-        } else {
-            presentMainWindow()
+            return
         }
+        if let window,
+           let frame = SummonPlacement.frame(
+               windowFrame: window.frame,
+               mouse: NSEvent.mouseLocation,
+               screens: NSScreen.screens.map { ($0.frame, $0.visibleFrame) }
+           ) {
+            window.setFrame(frame, display: false)
+        }
+        presentMainWindow()
     }
 
     // MARK: - Menu bar (PRD §13.3)

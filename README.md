@@ -68,7 +68,7 @@ swift test    # 运行单元测试（存储层 + 纯逻辑，秒级完成）
 | 全局 | `⌘1` | 切到 All |
 | 全局 | `⌘2`…`⌘0` | 按 Project Manual Order 切到对应 Project（第 1–9 个；更多需用 Scope Bar 或鼠标） |
 | 全局 | `⌘,` | 打开 Settings（Launch at Login、⌥Space 唤起、iCloud Sync） |
-| 系统全局 | `⌥Space` | 从任意应用唤起 Inbox 并聚焦 Universal Input；Inbox 已在最前时隐藏并回到上一个应用（可在 Settings 关闭） |
+| 系统全局 | `⌥Space` | 从任意应用唤起 Inbox 并聚焦 Universal Input，窗口出现在鼠标所在屏幕（跨屏时移过去居中）；Inbox 已在最前时隐藏并回到上一个应用（可在 Settings 关闭） |
 | 全局 | `⌘W` | 隐藏主窗口（进程继续驻留，不是关闭应用） |
 | 全局 | `⌘Q` | 退出应用 |
 
