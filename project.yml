@@ -81,11 +81,10 @@ targets:
       path: Sources/Inbox/Resources/Info.plist
       properties:
         # Sparkle feed follows the latest GitHub release (docs/RELEASE.md).
-        # Empty SUPublicEDKey keeps the updater off until the EdDSA key
-        # pair exists — AppDelegate guards on it; paste the public key from
-        # `generate_keys` here to arm updates.
+        # The public EdDSA key pairs with the CI secret SPARKLE_ED_PRIVATE_KEY
+        # (private key also in the account holder's login Keychain).
         SUFeedURL: https://github.com/lixiaolin94/Inbox/releases/latest/download/appcast.xml
-        SUPublicEDKey: ""
+        SUPublicEDKey: "eaPIgZ2aNcGGEWHZVbVc1rmaP1jKoX4inFv+5k79TpA="
     entitlements:
       path: Inbox.entitlements
       properties:
