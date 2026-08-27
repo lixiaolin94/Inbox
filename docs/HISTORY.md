@@ -12,7 +12,8 @@
 | 发布准备 | 键盘按字符判定；底栏换平台按钮实验（否决，见基线）；CloudKit 环境按配置、File 导出、同步状态、搜索规模复查（保留 LIKE）、像素快照、冲突中心（schema v4 `conflict_of`） | `24a15fb` |
 | 视觉语言 | `Theme.swift` 单一令牌源、墨色/纸色阶梯、安静选中块、透明覆盖栏 + 边缘溶解、overlay 滚动条；⌘Z 覆盖 Resolve/Move；排序两态切换；去掉 `M` 键 | `ee49489` |
 | 表面与行高 | 底栏图标按钮、Trash 表面与主表面同构、`windowInset`/`contentInset` 分离并定 12；显式行高（根治自动行高的滚动跳行/只长不缩/改宽丢选区）、`scrollRowToVisible` 避开覆盖栏 | `8350d3c` |
-| 光学对齐与收口 | 光学轨按渲染墨迹断言（`Theme.Optical` + `stepOpticalRails`）、SF Symbol 按对齐带绘制、双击编辑、右键 Mark as Resolved、日期跟随 UI 语言、Settings 标题、发布前清扫（死代码、注释、冒烟拆文件）、App 图标接入 | HEAD |
+| 光学对齐与收口 | 光学轨按渲染墨迹断言（`Theme.Optical` + `stepOpticalRails`）、SF Symbol 按对齐带绘制、双击编辑、右键 Mark as Resolved、日期跟随 UI 语言、Settings 标题、发布前清扫（死代码、注释、冒烟拆文件）、App 图标接入 | `ea9390d` |
+| 全局唤起 | `⌥Space` 系统级热键（Carbon `RegisterEventHotKey` 零依赖封装，非独占注册）：唤起聚焦 Input / 最前时隐藏回上一应用；Settings 开关即时生效；冒烟断言注册跟随开关 | `1f7115a` |
 
 ## 关键技术决策
 
