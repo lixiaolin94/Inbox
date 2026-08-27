@@ -165,6 +165,9 @@ enum Theme {
             /// Text-only: no fill, no stroke, `Ink.secondary` — a link-like
             /// control such as Trash's Back.
             case plain
+            /// 实验（未提交）：玻璃胶囊 ButtonGroup 里的成员——默认无底，
+            /// hover / 激活时显示圆底。
+            case grouped
         }
 
         static let outlineColor = Ink.outline
@@ -195,6 +198,10 @@ enum Theme {
                     layer.borderColor = NSColor.clear.cgColor
                 case (.plain, _):
                     layer.backgroundColor = NSColor.clear.cgColor
+                    layer.borderWidth = 0
+                    layer.borderColor = NSColor.clear.cgColor
+                case (.grouped, let on):
+                    layer.backgroundColor = on ? resolved(buttonSelectedFill) : NSColor.clear.cgColor
                     layer.borderWidth = 0
                     layer.borderColor = NSColor.clear.cgColor
                 }

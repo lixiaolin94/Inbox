@@ -64,6 +64,9 @@ final class ScopeChipButton: NSButton {
     }
 
     private var isDropHighlighted = false
+    /// 实验（未提交）：`.grouped` 的 hover 圆底。
+    private var isHovered = false
+    private var hoverArea: NSTrackingArea?
     /// `NSButton.title` mirrors `attributedTitle.string`, which would include
     /// the symbol attachment after the first `applyAppearance` — keep the
     /// plain text ourselves.
@@ -181,6 +184,29 @@ final class ScopeChipButton: NSButton {
         onBuildMenu?()
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        if style == .grouped { applyAppearance() }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        if style == .grouped { applyAppearance() }
+    }
+
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard canAccept(sender) else { return [] }
         setDropHighlighted(true)
@@ -231,7 +257,7 @@ final class ScopeChipButton: NSButton {
 
     override func layout() {
         super.layout()
-        layer?.cornerRadius = style == .capsule ? max(bounds.height, 1) / 2 : Theme.Radius.control
+        layer?.cornerRadius = (style == .capsule || style == .grouped) ? max(bounds.height, 1) / 2 : Theme.Radius.control
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -242,7 +268,11 @@ final class ScopeChipButton: NSButton {
     func applyAppearance() {
         // Symbol chips convey state by swapping the glyph (eye / eye.slash);
         // filled buttons can carry both, so the fill follows the state there.
-        let highlighted = (symbolName == nil || style == .filled) && (isSelectedScope || isDropHighlighted)
+        // `.grouped` adds hover: no ground at rest, a round one under the cursor.
+        let engaged = isSelectedScope || isDropHighlighted
+        let highlighted = style == .grouped
+            ? engaged || isHovered
+            : (symbolName == nil || style == .filled) && engaged
         let (color, inkKey): (NSColor, String) = switch (isEnabled, style) {
         case (false, _): (Theme.Ink.tertiary, "tertiary")
         case (true, .plain): (Theme.Ink.secondary, "secondary")

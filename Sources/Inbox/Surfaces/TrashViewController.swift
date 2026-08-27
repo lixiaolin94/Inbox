@@ -173,7 +173,7 @@ final class TrashViewController: NSViewController {
         let titleZone = NSLayoutGuide()
         view.addLayoutGuide(titleZone)
 
-        restoreButton.style = .filled
+        restoreButton.style = .grouped
         restoreButton.iconOnly = true
         restoreButton.symbolName = "arrow.uturn.backward"
         restoreButton.toolTip = "Restore"
@@ -181,7 +181,7 @@ final class TrashViewController: NSViewController {
         restoreButton.onClick = { [weak self] in self?.restoreSelected() }
         restoreButton.translatesAutoresizingMaskIntoConstraints = false
 
-        deletePermanentlyButton.style = .filled
+        deletePermanentlyButton.style = .grouped
         deletePermanentlyButton.iconOnly = true
         deletePermanentlyButton.symbolName = "xmark.bin"
         deletePermanentlyButton.toolTip = "Delete Permanently"
@@ -192,10 +192,24 @@ final class TrashViewController: NSViewController {
         // No key hints here on purpose: Restore is mouse-only (button or
         // context menu) and ⌫ asks for confirmation — Trash interactions
         // are meant to cost more than the main surface's.
+        // 实验（未提交）：与主表面同构的玻璃胶囊 ButtonGroup。
+        let trashGroup = NSStackView()
+        trashGroup.orientation = .horizontal
+        trashGroup.alignment = .centerY
+        trashGroup.spacing = Theme.Spacing.xs
+        trashGroup.translatesAutoresizingMaskIntoConstraints = false
+        trashGroup.addArrangedSubview(restoreButton)
+        trashGroup.addArrangedSubview(deletePermanentlyButton)
+
+        let actionGroup = GlassCapsuleView()
+        actionGroup.prefersClearGlass = true
+        actionGroup.tintColor = NSColor.black.withAlphaComponent(0.4)
+        actionGroup.translatesAutoresizingMaskIntoConstraints = false
+        actionGroup.contentView.addSubview(trashGroup)
+
         let actionBar = NSView()
         actionBar.translatesAutoresizingMaskIntoConstraints = false
-        actionBar.addSubview(restoreButton)
-        actionBar.addSubview(deletePermanentlyButton)
+        actionBar.addSubview(actionGroup)
 
         // List first, bars on top: both are transparent overlays over the
         // list's ends (ui.md §4).
@@ -204,12 +218,14 @@ final class TrashViewController: NSViewController {
         view.addSubview(actionBar)
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            // 实验（未提交）：toolbar 撑高了 safe area，Back 栏与列表改锚窗口
+            // 顶固定 44（标题仍留在 toolbar 区、与红绿灯对齐）。
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor, constant: 44),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            headerBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            headerBar.topAnchor.constraint(equalTo: view.topAnchor, constant: 44),
             headerBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             headerBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             headerBar.heightAnchor.constraint(equalToConstant: Theme.Size.scopeBarHeight),
@@ -224,18 +240,22 @@ final class TrashViewController: NSViewController {
             titleZone.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             titleZone.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             titleLabel.centerXAnchor.constraint(equalTo: titleZone.centerXAnchor),
-            titleLabel.centerYAnchor.constraint(equalTo: titleZone.centerYAnchor),
+            // 实验（未提交）：unified toolbar 里红绿灯不在区域几何中心（其
+            // 中心距窗顶 ~26pt），标题 centerY 直接钉这条线。
+            titleLabel.centerYAnchor.constraint(equalTo: view.topAnchor, constant: 26),
 
             actionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             actionBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             actionBar.heightAnchor.constraint(equalToConstant: Theme.Size.utilityBarHeight),
 
-            restoreButton.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: Theme.Size.windowInset),
-            restoreButton.bottomAnchor.constraint(equalTo: actionBar.bottomAnchor, constant: -Theme.Size.windowInset),
+            actionGroup.widthAnchor.constraint(equalTo: trashGroup.widthAnchor, constant: 8),
+            actionGroup.heightAnchor.constraint(equalToConstant: Theme.Size.chipHeight + 8),
+            trashGroup.centerXAnchor.constraint(equalTo: actionGroup.centerXAnchor),
+            trashGroup.centerYAnchor.constraint(equalTo: actionGroup.centerYAnchor),
 
-            deletePermanentlyButton.leadingAnchor.constraint(equalTo: restoreButton.trailingAnchor, constant: Theme.Size.chipSpacing),
-            deletePermanentlyButton.centerYAnchor.constraint(equalTo: restoreButton.centerYAnchor)
+            actionGroup.leadingAnchor.constraint(equalTo: actionBar.leadingAnchor, constant: Theme.Size.windowInset),
+            actionGroup.bottomAnchor.constraint(equalTo: actionBar.bottomAnchor, constant: -Theme.Size.windowInset)
         ])
     }
 

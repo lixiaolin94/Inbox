@@ -27,7 +27,9 @@ final class MainViewController: NSViewController {
     let scrollView = OverlayScrollView()
     /// The one hard line on the surface (ui.md §3), between Input and the
     /// Scope Bar; the list's other edges dissolve under the bars instead.
-    private(set) lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: Theme.Size.utilityBarHeight)
+    // 实验（未提交）：底部溶解带关闭（原 bottomBar: utilityBarHeight）——
+    // 让列表全不透明地从玻璃 ButtonGroup 下穿过，由玻璃负责区隔。
+    private(set) lazy var listDissolve = EdgeDissolve(scrollView: scrollView, topBar: Theme.Size.scopeBarHeight, bottomBar: 0)
     /// Bottom-bar controls are the same custom chip as the Scope Bar, on
     /// purpose: measured against platform accessory-bar NSButtons the chip
     /// paints ~3–8 ms faster on first draw and ~2 ms per redraw each, and
@@ -107,6 +109,54 @@ final class MainViewController: NSViewController {
     }
 
     override func loadView() {
+        // 实验（未提交）：clear 玻璃整窗背景，对照原 sidebar behind-window 模糊。
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: Theme.Size.windowDefault))
+            glass.style = .clear
+            // 实验（未提交）：窗口圆角自绘——窗口本身透明，可见形状就是这层
+            // 玻璃（NSWindow 无公开圆角 API），改这个数值即改"窗口圆角"，
+            // 阴影按像素形状自动跟随。代价：根视图需要裁剪，Input 玻璃出界的
+            // 投影在窗缘会被裁掉（实验期接受）。
+            let windowCornerRadius: CGFloat = 28
+            glass.cornerRadius = windowCornerRadius
+            glass.wantsLayer = true
+            glass.layer?.cornerCurve = .continuous
+            glass.layer?.cornerRadius = windowCornerRadius
+            glass.clipsToBounds = true
+            // Siri 风格暗色 scrim。CAGradientLayer 色标间只做线性插值，
+            // 平滑靠"曲线采样成密集色标"（easing-gradient 手法）：每段
+            // smoothstep（两端斜率 0），拐点与收尾都没有折线。
+            // 锚点（可调）：顶 0.8 → 0.8 处 0.6 → 底 0.2。
+            let anchors: [(location: CGFloat, alpha: CGFloat)] = [
+                (0.0, 0.9),
+                (0.7, 0.7),
+                (1.0, 0.2)
+            ]
+            func smoothstep(_ t: CGFloat) -> CGFloat { t * t * (3 - 2 * t) }
+            var colors: [CGColor] = []
+            var locations: [NSNumber] = []
+            for (a, b) in zip(anchors, anchors.dropFirst()) {
+                let steps = 12
+                for i in 0...steps {
+                    let t = CGFloat(i) / CGFloat(steps)
+                    let alpha = a.alpha + (b.alpha - a.alpha) * smoothstep(t)
+                    colors.append(NSColor.black.withAlphaComponent(alpha).cgColor)
+                    locations.append(NSNumber(value: a.location + (b.location - a.location) * t))
+                }
+            }
+            let gradient = CAGradientLayer()
+            gradient.colors = colors
+            gradient.locations = locations
+            gradient.startPoint = CGPoint(x: 0.5, y: 1)
+            gradient.endPoint = CGPoint(x: 0.5, y: 0)
+            let scrim = NSView(frame: glass.bounds)
+            scrim.layer = gradient
+            scrim.wantsLayer = true
+            scrim.autoresizingMask = [.width, .height]
+            glass.addSubview(scrim)
+            view = glass
+            return
+        }
         let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: Theme.Size.windowDefault))
         effect.material = .sidebar
         effect.blendingMode = .behindWindow
@@ -307,30 +357,46 @@ final class MainViewController: NSViewController {
 
         functionGroup.orientation = .horizontal
         functionGroup.alignment = .centerY
-        functionGroup.spacing = Theme.Size.chipSpacing
+        functionGroup.spacing = Theme.Spacing.xs
         functionGroup.translatesAutoresizingMaskIntoConstraints = false
         // Resolved / Sort / Trash are square icon buttons; Conflicts keeps
         // its count as text because it only appears when there is news.
         for chip in [resolvedChip, sortChip, trashButton] {
             chip.iconOnly = true
         }
+        // 实验（未提交）：ButtonGroup——玻璃胶囊容器，成员无底、hover 圆底。
         for chip in [resolvedChip, sortChip, conflictsChip, trashButton] {
-            chip.style = .filled
+            chip.style = .grouped
             functionGroup.addArrangedSubview(chip)
         }
 
+        // 实验（未提交）：ButtonGroup 玻璃胶囊（clear + 黑 tint，会随背景
+        // 取样——玻璃本性，定稿决策）。
+        let buttonGroup = GlassCapsuleView()
+        buttonGroup.prefersClearGlass = true
+        buttonGroup.tintColor = NSColor.black.withAlphaComponent(0.4)
+        buttonGroup.translatesAutoresizingMaskIntoConstraints = false
+        buttonGroup.contentView.addSubview(functionGroup)
+
         offlineNoticeLabel.translatesAutoresizingMaskIntoConstraints = false
         utilityBar.translatesAutoresizingMaskIntoConstraints = false
-        utilityBar.addSubview(functionGroup)
+        utilityBar.addSubview(buttonGroup)
         utilityBar.addSubview(offlineNoticeLabel)
 
         NSLayoutConstraint.activate([
-            functionGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.windowInset),
-            functionGroup.bottomAnchor.constraint(equalTo: utilityBar.bottomAnchor, constant: -Theme.Size.windowInset),
+            // 容器尺寸由成员反推（玻璃视图自身不传递内部约束）：
+            // 左右各 4，高 26 + 上下各 4 = 34。
+            buttonGroup.widthAnchor.constraint(equalTo: functionGroup.widthAnchor, constant: 8),
+            buttonGroup.heightAnchor.constraint(equalToConstant: Theme.Size.chipHeight + 8),
+            functionGroup.centerXAnchor.constraint(equalTo: buttonGroup.centerXAnchor),
+            functionGroup.centerYAnchor.constraint(equalTo: buttonGroup.centerYAnchor),
+
+            buttonGroup.leadingAnchor.constraint(equalTo: utilityBar.leadingAnchor, constant: Theme.Size.windowInset),
+            buttonGroup.bottomAnchor.constraint(equalTo: utilityBar.bottomAnchor, constant: -Theme.Size.windowInset),
 
             offlineNoticeLabel.trailingAnchor.constraint(equalTo: utilityBar.trailingAnchor, constant: -Theme.Size.windowInset),
-            offlineNoticeLabel.centerYAnchor.constraint(equalTo: functionGroup.centerYAnchor),
-            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: functionGroup.trailingAnchor, constant: Theme.Spacing.xl)
+            offlineNoticeLabel.centerYAnchor.constraint(equalTo: buttonGroup.centerYAnchor),
+            offlineNoticeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: buttonGroup.trailingAnchor, constant: Theme.Spacing.xl)
         ])
     }
 
@@ -412,7 +478,9 @@ final class MainViewController: NSViewController {
         mainSurface.addSubview(universalInput)
 
         NSLayoutConstraint.activate([
-            universalInput.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Theme.Spacing.md),
+            // 实验（未提交）：toolbar 撑高了 safe area，Input 改锚窗口顶固定
+            // 36pt（≈ 原 titlebar 28 + md 8），与 toolbar 高度解耦。
+            universalInput.topAnchor.constraint(equalTo: view.topAnchor, constant: 48),
             universalInput.leadingAnchor.constraint(equalTo: mainSurface.leadingAnchor, constant: Theme.Size.windowInset),
             universalInput.trailingAnchor.constraint(equalTo: mainSurface.trailingAnchor, constant: -Theme.Size.windowInset),
             universalInput.heightAnchor.constraint(equalToConstant: Theme.Size.inputHeight),
