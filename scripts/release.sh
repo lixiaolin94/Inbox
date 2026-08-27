@@ -30,6 +30,14 @@ fi
 rm -rf "$ARCHIVE" "$EXPORT" build/Inbox-*.zip
 mkdir -p build
 
+# Manual Developer ID signing needs the profile installed (both paths:
+# Xcode 16+ reads UserData, older tools read MobileDevice).
+for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+           "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+  mkdir -p "$dir"
+  cp scripts/InboxDeveloperID.provisionprofile "$dir/"
+done
+
 echo "▸ archive (Release, arm64, hardened runtime)"
 xcodebuild -project Inbox.xcodeproj -scheme Inbox -configuration Release \
   -archivePath "$ARCHIVE" -allowProvisioningUpdates "${AUTH[@]}" archive \
