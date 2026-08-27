@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Preferences.configure(suiteName: launch.defaultsSuiteName)
 
         NSApp.setActivationPolicy(.regular)
+        // 实验（未提交）：不再跟随系统亮暗色，整应用强制暗色 scheme。
+        NSApp.appearance = NSAppearance(named: .darkAqua)
 
         do {
             if let databasePath = launch.databasePath {
@@ -107,6 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // returns false so AppKit never releases it; this flag is the
         // belt if something still sends `close`.
         window.isReleasedWhenClosed = false
+        // 实验（未提交）：空 toolbar + unified 风格让系统把红绿灯往内挪一档
+        // （配大窗圆角）；按钮仍全由系统绘制与布局，零自定义。
+        let titlebarSpacer = NSToolbar(identifier: "InboxTitlebarSpacer")
+        window.toolbar = titlebarSpacer
+        window.toolbarStyle = .unified
         window.center()
         window.makeKeyAndOrderFront(nil)
         TitlebarBackdrop.hideSystemFill(in: window)

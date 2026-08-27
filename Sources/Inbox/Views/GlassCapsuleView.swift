@@ -23,6 +23,14 @@ final class GlassCapsuleView: NSView {
         didSet { applyChrome() }
     }
 
+    /// 实验（未提交）：clear 玻璃（macOS 26+ 生效；fallback 不变）。
+    var prefersClearGlass = false {
+        didSet {
+            guard #available(macOS 26.0, *), let view = glass as? NSGlassEffectView else { return }
+            view.style = prefersClearGlass ? .clear : .regular
+        }
+    }
+
     private var glass: NSView?
 
     override init(frame frameRect: NSRect) {

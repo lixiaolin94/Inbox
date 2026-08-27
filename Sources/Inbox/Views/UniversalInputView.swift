@@ -21,7 +21,10 @@ final class UniversalInputView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
 
-        chrome.cornerRadius = Theme.Radius.input
+        // 实验（未提交）：nil = 胶囊（高 48 → 半径 24）；原值 Theme.Radius.input。
+        chrome.cornerRadius = nil
+        // 实验（未提交）：clear 玻璃（折射边缘更明显，暗 scrim 上更突出）。
+        chrome.prefersClearGlass = true
         chrome.translatesAutoresizingMaskIntoConstraints = false
         addSubview(chrome)
         NSLayoutConstraint.activate([
