@@ -18,7 +18,7 @@ Record/Project 语义；Universal Input 的 Search+Create 合一；Enter 默认�
 
 ## 工程铁律（详见 SPEC.md）
 
-- 零第三方依赖；AppKit 纯代码；Swift 5 语言模式；UI 主线程 + DB 单串行队列单连接 + 事务写入。
+- 零第三方依赖（唯一例外 Sparkle 2 自动更新，只挂 Xcode 工程、代码用 `#if canImport(Sparkle) && !DEBUG` 包裹，`swift build` 回路不含它）；AppKit 纯代码；Swift 5 语言模式；UI 主线程 + DB 单串行队列单连接 + 事务写入。
 - 反过度设计：同一模式第三次出现才抽象；不为"未来可能"预留接口；防御只在数据落盘/外部输入边界，内部用断言。
 - **平台原生优先**：先找 AppKit 现成控件与样式，自绘是最后手段且要在 ARCHITECTURE §8 登记原因。
 - 测试只覆盖三类：存储层、纯逻辑、冲突合并。不写 UI 自动化——UI 用 `--ui-smoke` + 人工冒烟。

@@ -19,7 +19,7 @@
 ## 2. 技术基线（PRD 已定项之外的补充决策）
 
 - **工程形态**：双通道。SPM（`swift build` / `swift test` / `swift run`）用于快速滚动验证与 CI；XcodeGen 生成的 `Inbox.xcodeproj` 用于 Xcode 打开与 .app 构建。`project.yml` 是唯一权威工程描述；生成的 `.xcodeproj` 入库（保证 clone 后 Xcode 直接打开）。改工程配置或增删源文件必须 `xcodegen generate` 并一起提交，不得手改 pbxproj。
-- **零第三方依赖**：SQLite 使用系统 libsqlite3 + 自写薄封装。禁止引入 ORM、响应式框架、DI 框架、任何 SPM 第三方包。
+- **零第三方依赖（唯一例外：Sparkle）**：SQLite 使用系统 libsqlite3 + 自写薄封装。禁止引入 ORM、响应式框架、DI 框架、其他任何 SPM 第三方包。Sparkle 2 是经用户批准的唯一例外（自动更新的安装安全细节不自研，HISTORY 决策 16），且只挂在 Xcode 工程（project.yml `packages:`）——`Package.swift` 不引用它，`swift build`/`swift test`/冒烟的秒级零依赖回路不变，代码里用 `#if canImport(Sparkle) && !DEBUG` 包裹。
 - **最低系统版本**：macOS 14（CKSyncEngine 需要）。macOS 26+ 的 Liquid Glass 通过 `#available` 分支使用并提供 fallback；跨 SDK 缺失的成员用 KVC，不提升最低版本。
 - **UI**：AppKit 纯代码构建，无 storyboard / xib，无 SwiftUI（框架选型复核见 ARCHITECTURE §7）。
 - **语言模式**：Swift 5 语言模式，暂不开启 Swift 6 严格并发检查。
