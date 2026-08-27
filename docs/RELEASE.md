@@ -73,5 +73,4 @@ CI 不可用时：`scripts/release.sh`（公证走 keychain profile `inbox-notar
   Production 的构建：`xcodebuild -configuration Debug -derivedDataPath
   /tmp/inbox-dd-prod ICLOUD_CONTAINER_ENVIRONMENT=Production
   'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CLOUDKIT_PRODUCTION' build`（已通过一次）。
-- 用户：删除库里的 `probe-prod-<时间戳>` 探针记录（App 内 ⌫）；/Applications
-  形态下确认 Launch at Login。
+- 用户：/Applications 形态下确认 Launch at Login。
